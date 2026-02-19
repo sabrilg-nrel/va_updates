@@ -1,3 +1,8 @@
+# ADVISORY
+# I will find high discrepancies between the EI and EIA datasets for thermal generators
+# The plants are aggregated different.
+# Bus name indicates which plant it is.
+
 using CSV
 using DataFrames
 
