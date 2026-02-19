@@ -1,5 +1,5 @@
 ---
-title: "VA EIA update"
+title: "VA Generator Fleet Comparison: EI vs EIA"
 author: "Sara Abril-Guevara"
 date: "`r Sys.Date()`"
 output:
@@ -16,22 +16,305 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Introduction
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This document compares generator fleets between the Energy Information Administration (EIA) and Energy Exemplar (EI) datasets. The comparison is based on geographic coordinates (latitude and longitude) with a configurable tolerance.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+## Load Libraries
 
-```{r cars}
-summary(cars)
+```{r load-libraries, include=FALSE}
+library(dplyr)
+library(readr)
+library(knitr)
+library(ggplot2)
 ```
 
-## Including Plots
+## Define Comparison Function
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r define-function, results='hide'}
+#' Compare generators between EI and EIA datasets using geographic coordinates
+#'
+#' @param ei_gens data.frame: EI generators dataframe (must have Lat, Lon, Rating columns)
+#' @param eia_gens data.frame: EIA generators dataframe (must have lat, lon, nameplate_capacity columns)
+#' @param coord_tolerance numeric: Maximum distance in degrees for matching (default: 0.02 ≈ 2.2km)
+#'
+#' @return list: Contains in_both, in_ei_only, in_eia_only data frames and summary statistics
+compare_generator_fleets = function(ei_gens, eia_gens, coord_tolerance = 0.02) {
+  
+  # Function to find matches based on lat/lon
+  find_closest_match = function(lat, lon, df, tolerance) {
+    distances = sqrt((df$lat - lat)^2 + (df$lon - lon)^2)
+    min_dist = min(distances)
+    idx = which.min(distances)
+    
+    if (min_dist <= tolerance) {
+      return(idx)
+    } else {
+      return(NA)
+    }
+  }
+  
+  # Create a copy to avoid modifying original
+  ei_gens_copy = ei_gens
+  
+  # Create matching results
+  ei_gens_copy$eia_match_idx = sapply(1:nrow(ei_gens_copy), function(i) {
+    find_closest_match(ei_gens_copy$Lat[i], ei_gens_copy$Lon[i], 
+                      eia_gens, coord_tolerance)
+  })
+  
+  # Generators in both datasets
+  in_both = ei_gens_copy %>% filter(!is.na(eia_match_idx))
+  
+  # Add EIA data to matched generators
+  if (nrow(in_both) > 0) {
+    in_both$eia_lat = eia_gens$lat[in_both$eia_match_idx]
+    in_both$eia_lon = eia_gens$lon[in_both$eia_match_idx]
+    in_both$eia_capacity = eia_gens$nameplate_capacity[in_both$eia_match_idx]
+    in_both$capacity_diff = in_both$Rating - in_both$eia_capacity
+    
+    # Rename EI lat/lon for clarity
+    in_both = in_both %>%
+      rename(ei_lat = Lat, ei_lon = Lon)
+  }
+  
+  # Generators in EI but not in EIA
+  in_ei_only = ei_gens_copy %>% filter(is.na(eia_match_idx))
+  
+  # Generators in EIA but not in EI
+  matched_eia_indices = in_both$eia_match_idx[!is.na(in_both$eia_match_idx)]
+  in_eia_only = eia_gens %>% 
+    filter(!(row_number() %in% matched_eia_indices))
+  
+  # Calculate summary statistics
+  total_ei_capacity = sum(ei_gens$Rating, na.rm = TRUE)
+  total_eia_capacity = sum(eia_gens$nameplate_capacity, na.rm = TRUE)
+  matched_ei_capacity = if(nrow(in_both) > 0) sum(in_both$Rating, na.rm = TRUE) else 0
+  matched_eia_capacity = if(nrow(in_both) > 0) sum(in_both$eia_capacity, na.rm = TRUE) else 0
+  mean_capacity_diff = if(nrow(in_both) > 0) mean(in_both$capacity_diff, na.rm = TRUE) else 0
+  
+  # Print summary
+  cat("\n", paste(rep("=", 60), collapse = ""), "\n")
+  cat("Fleet Comparison Results\n")
+  cat(paste(rep("=", 60), collapse = ""), "\n")
+  cat("Generators in both EI and EIA:", nrow(in_both), "\n")
+  cat("Generators in EI only:", nrow(in_ei_only), "\n")
+  cat("Generators in EIA only:", nrow(in_eia_only), "\n")
+  cat("\nCapacity Summary:\n")
+  cat("  Total EI capacity:", round(total_ei_capacity, 2), "MW\n")
+  cat("  Total EIA capacity:", round(total_eia_capacity, 2), "MW\n")
+  cat("  Matched EI capacity:", round(matched_ei_capacity, 2), "MW\n")
+  cat("  Matched EIA capacity:", round(matched_eia_capacity, 2), "MW\n")
+  cat("  Mean capacity difference:", round(mean_capacity_diff, 2), "MW\n")
+  cat(paste(rep("=", 60), collapse = ""), "\n\n")
+  
+  # Return results as a list
+  return(list(
+    in_both = in_both,
+    in_ei_only = in_ei_only,
+    in_eia_only = in_eia_only,
+    summary = list(
+      total_ei_capacity = total_ei_capacity,
+      total_eia_capacity = total_eia_capacity,
+      matched_ei_capacity = matched_ei_capacity,
+      matched_eia_capacity = matched_eia_capacity,
+      mean_capacity_diff = mean_capacity_diff,
+      n_matched = nrow(in_both),
+      n_ei_only = nrow(in_ei_only),
+      n_eia_only = nrow(in_eia_only)
+    )
+  ))
+}
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Load Data
+
+```{r load-data, results='hide'}
+# Load EI generators
+VA_ei_gens = read_csv("VA_original_EI.csv")
+
+# Filter renewable dispatch generators
+ei_rd_gens = VA_ei_gens %>% 
+  filter(Type == "RenewableDispatch")
+
+# Load EIA renewable generators
+eia_rd = read_csv("renewable_VA_EIA.csv")
+```
+
+## Data Overview
+
+### EI Renewable Generators
+
+```{r ei-overview}
+cat("Total EI renewable generators:", nrow(ei_rd_gens), "\n")
+cat("Total EI renewable capacity:", round(sum(ei_rd_gens$Rating), 2), "MW\n")
+cat("Available generators:", sum(ei_rd_gens$Available), "\n")
+cat("Unavailable generators:", sum(!ei_rd_gens$Available), "\n")
+```
+
+**Total EI renewable generators:** `r nrow(ei_rd_gens)`
+
+**Total EI renewable capacity:** `r round(sum(ei_rd_gens$Rating), 2)` MW
+
+**Available generators:** `r sum(ei_rd_gens$Available)`
+
+**Unavailable generators:** `r sum(!ei_rd_gens$Available)`
+
+### EIA Renewable Generators
+
+```{r eia-overview}
+cat("Total EIA renewable generators:", nrow(eia_rd), "\n")
+cat("Total EIA renewable capacity:", round(sum(eia_rd$nameplate_capacity), 2), "MW\n")
+```
+
+## Run Comparison
+
+We use a coordinate tolerance of 0.02 degrees (approximately 2.2 km) to match generators.
+
+```{r run-comparison}
+renewable_results = compare_generator_fleets(
+  ei_rd_gens, 
+  eia_rd, 
+  coord_tolerance = 0.02
+)
+```
+
+## Results
+
+### Summary Statistics
+
+```{r summary-table}
+summary_df = data.frame(
+  Metric = c("Generators in both datasets", 
+             "Generators in EI only", 
+             "Generators in EIA only",
+             "Total EI capacity (MW)",
+             "Total EIA capacity (MW)",
+             "Matched EI capacity (MW)",
+             "Matched EIA capacity (MW)",
+             "Mean capacity difference (MW)"),
+  Value = c(
+    renewable_results$summary$n_matched,
+    renewable_results$summary$n_ei_only,
+    renewable_results$summary$n_eia_only,
+    round(renewable_results$summary$total_ei_capacity, 2),
+    round(renewable_results$summary$total_eia_capacity, 2),
+    round(renewable_results$summary$matched_ei_capacity, 2),
+    round(renewable_results$summary$matched_eia_capacity, 2),
+    round(renewable_results$summary$mean_capacity_diff, 2)
+  )
+)
+
+kable(summary_df, caption = "Renewable Generator Fleet Comparison Summary")
+```
+
+### Matched Generators
+
+```{r matched-table}
+if (nrow(renewable_results$in_both) > 0) {
+  matched_display = renewable_results$in_both %>%
+    dplyr::select(GenName, Rating, ei_lat, ei_lon, eia_lat, eia_lon, 
+           eia_capacity, capacity_diff, Available) %>%
+    head(20)
+  
+  kable(matched_display, 
+        caption = "Sample of Matched Generators (first 20)",
+        digits = 4)
+}
+```
+
+### Capacity Difference Distribution
+
+```{r capacity-plot, fig.width=10, fig.height=6}
+if (nrow(renewable_results$in_both) > 0) {
+  ggplot(renewable_results$in_both, aes(x = capacity_diff)) +
+    geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+    labs(title = "Distribution of Capacity Differences (EI - EIA)",
+         x = "Capacity Difference (MW)",
+         y = "Count") +
+    theme_minimal()
+}
+```
+
+### Geographic Distribution
+
+```{r geo-plot, fig.width=12, fig.height=8}
+if (nrow(renewable_results$in_both) > 0) {
+  ggplot() +
+    geom_point(data = renewable_results$in_both, 
+               aes(x = ei_lon, y = ei_lat), 
+               color = "blue", alpha = 0.6, size = 3) +
+    geom_point(data = renewable_results$in_both, 
+               aes(x = eia_lon, y = eia_lat), 
+               color = "red", alpha = 0.6, size = 3) +
+    geom_segment(data = renewable_results$in_both,
+                 aes(x = ei_lon, y = ei_lat, 
+                     xend = eia_lon, yend = eia_lat),
+                 alpha = 0.3) +
+    labs(title = "Geographic Matching of Generators",
+         subtitle = "Blue = EI location, Red = EIA location",
+         x = "Longitude",
+         y = "Latitude") +
+    theme_minimal()
+}
+```
+
+### EI-Only Generators
+
+These generators exist in EI but not in EIA (potentially unavailable or retired):
+
+```{r ei-only}
+cat("Number of EI-only generators:", nrow(renewable_results$in_ei_only), "\n")
+cat("Unavailable generators in EI-only:", 
+    sum(!renewable_results$in_ei_only$Available), "\n")
+
+if (nrow(renewable_results$in_ei_only) > 0) {
+  ei_only_display = renewable_results$in_ei_only %>%
+    dplyr::select(GenName, Rating, Lat, Lon, Available) %>%
+    head(20)
+  
+  kable(ei_only_display, 
+        caption = "Sample of EI-Only Generators (first 20)")
+}
+```
+
+### EIA-Only Generators
+
+These generators exist in EIA but not in EI:
+
+```{r eia-only}
+cat("Number of EIA-only generators:", nrow(renewable_results$in_eia_only), "\n")
+
+if (nrow(renewable_results$in_eia_only) > 0) {
+  eia_only_display = renewable_results$in_eia_only %>%
+    dplyr::select(plant, technology, nameplate_capacity, lat, lon) %>%
+    head(20)
+  
+  kable(eia_only_display, 
+        caption = "Sample of EIA-Only Generators (first 20)")
+}
+```
+
+## Export Results
+
+```{r export-results, eval=FALSE}
+# # Export matched generators
+# write_csv(renewable_results$in_both, "matched_renewable_generators.csv")
+# 
+# # Export EI-only generators
+# write_csv(renewable_results$in_ei_only, "ei_only_renewable_generators.csv")
+# 
+# # Export EIA-only generators
+# write_csv(renewable_results$in_eia_only, "eia_only_renewable_generators.csv")
+```
+
+## Conclusion
+
+This comparison identified:
+
+- **`r renewable_results$summary$n_matched`** matched generators between EI and EIA
+- **`r renewable_results$summary$n_ei_only`** generators only in EI (may be unavailable)
+- **`r renewable_results$summary$n_eia_only`** generators only in EIA (not in the system model)
+
+The mean capacity difference for matched generators is **`r round(renewable_results$summary$mean_capacity_diff, 2)` MW**.
