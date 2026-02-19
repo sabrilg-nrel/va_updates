@@ -1,0 +1,80 @@
+﻿plant,generator ID,mode,state,lat,lon,nameplate_capacity,net_summer_capacity,net_winter_capacity,nerc_region,ba
+Reusens,1,Storage,VA,37.4634,-79.1857,2.5,2.5,2.5,RFC,PJM
+Reusens,2,Storage,VA,37.46,-79.1857,2.5,2.5,2.5,RFC,PJM
+Reusens,3,Storage,VA,37.46,-79.1857,2.5,2.5,2.5,RFC,PJM
+Reusens,4,Storage,VA,37.46,-79.1857,2.5,2.5,2.5,RFC,PJM
+Reusens,5,Storage,VA,37.46,-79.1857,2.5,2.5,2.5,RFC,PJM
+Luray,1,RoR,VA,38.68,-78.4999,0.6,0.4,0.6,RFC,PJM
+Luray,2,RoR,VA,38.68,-78.4999,0.4,0.3,0.4,RFC,PJM
+Luray,3,RoR,VA,38.68,-78.4999,0.6,0.4,0.6,RFC,PJM
+Newport,1,RoR,VA,38.57,-78.5929,0.4,0.3,0.4,RFC,PJM
+Newport,2,RoR,VA,38.57,-78.5929,0.4,0.5,0.5,RFC,PJM
+Newport,3,RoR,VA,38.57,-78.5929,0.6,0.5,0.6,RFC,PJM
+Cushaw,1,RoR,VA,37.59,-79.3812,1.5,0.4,0.4,SERC,PJM
+Cushaw,2,RoR,VA,37.59,-79.3812,1.5,0.4,0.4,SERC,PJM
+Cushaw,3,RoR,VA,37.59,-79.3812,1.5,0.4,0.4,SERC,PJM
+Cushaw,4,RoR,VA,37.59,-79.3812,1.5,0.4,0.4,SERC,PJM
+Cushaw,5,RoR,VA,37.59,-79.3812,1.5,0.4,0.4,SERC,PJM
+Lake Anna,HC1,Storage,VA,38.01,-77.7133,1,1,1,SERC,PJM
+Brasfield,1,RoR,VA,37.22,-77.525,2.9,2.9,2.9,SERC,PJM
+Big Island,BHG1,RoR,VA,37.54,-79.3568,0.2,0.2,0.2,RFC,PJM
+Big Island,BHG2,RoR,VA,37.54,-79.3568,0.2,0.2,0.2,RFC,PJM
+Coleman Falls,CGH2,Storage,VA,37.5,-79.3002,0.5,0.5,0.5,RFC,PJM
+Coleman Falls,CGH3,Storage,VA,37.5,-79.3002,0.5,0.5,0.5,RFC,PJM
+Coleman Falls,CGH1,Storage,VA,37.5,-79.3002,0.5,0.5,0.5,RFC,PJM
+Holcomb Rock,HG1,RoR,VA,37.51,-79.2659,0.6,0.2,0.2,RFC,PJM
+Holcomb Rock,HG2,RoR,VA,37.51,-79.2659,0.6,0.2,0.2,RFC,PJM
+Holcomb Rock,HG3,RoR,VA,37.51,-79.2659,0.6,0.2,0.2,RFC,PJM
+Leesville,1,Storage,VA,37.09,-79.4025,20,25,25,RFC,PJM
+Leesville,2,Storage,VA,37.09,-79.4025,20,25,25,RFC,PJM
+Niagara,1,RoR,VA,37.25,-79.875,2.4,0.6,1.4,RFC,PJM
+Niagara,2,RoR,VA,37.25,-79.875,1.2,1.2,1.2,RFC,PJM
+Smith Mountain,1,PumpedStorage,VA,37.04,-79.5359,66,66,66,RFC,PJM
+Smith Mountain,3,PumpedStorage,VA,37.04,-79.5359,115.3,106,106,RFC,PJM
+Smith Mountain,5,PumpedStorage,VA,37.04,-79.5359,66,66,66,RFC,PJM
+Smith Mountain,2,Storage,VA,37.04,-79.5359,150.1,174,174,RFC,PJM
+Smith Mountain,4,Storage,VA,37.04,-79.5359,150.1,174,174,RFC,PJM
+Pinnacles,1,Storage,VA,36.69,-80.4303,3.7,3.5,3.5,RFC,PJM
+Pinnacles,2,Storage,VA,36.69,-80.4303,3.7,3.5,3.5,RFC,PJM
+Pinnacles,3,Storage,VA,36.69,-80.4303,3.7,3.5,3.5,RFC,PJM
+Pinnacles,4,Storage,VA,36.69,-80.4303,0.7,0.6,0.6,RFC,PJM
+Martinsville,1,Storage,VA,36.66,-79.8839,0.3,0.3,0.3,RFC,PJM
+Martinsville,2,Storage,VA,36.66,-79.8839,1,0.9,0.9,RFC,PJM
+John H Kerr,1,Storage,VA,36.6,-78.29915,13.8,13.8,13.8,SERC,PJM
+John H Kerr,2,Storage,VA,36.6,-78.29915,46.8,46.8,46.8,SERC,PJM
+John H Kerr,3,Storage,VA,36.6,-78.29915,46.8,46.8,46.8,SERC,PJM
+John H Kerr,4,Storage,VA,36.6,-78.29915,46.8,46.8,46.8,SERC,PJM
+John H Kerr,5,Storage,VA,36.6,-78.29915,46.8,46.8,46.8,SERC,PJM
+John H Kerr,6,Storage,VA,36.6,-78.29915,46.8,46.8,46.8,SERC,PJM
+John H Kerr,7,Storage,VA,36.6,-78.29915,46.8,46.8,46.8,SERC,PJM
+John H Kerr,A,Storage,VA,36.6,-78.29915,1.1,1,1,SERC,PJM
+John H Kerr,B,Storage,VA,36.6,-78.29915,1.1,1,1,SERC,PJM
+Philpott Lake,1,Storage,VA,36.78,-80.02768,6.7,7.5,7.5,RFC,PJM
+Philpott Lake,2,Storage,VA,36.78,-80.02768,6.7,7.5,7.5,RFC,PJM
+Philpott Lake,3,Storage,VA,36.78,-80.02768,0.6,0.6,0.6,RFC,PJM
+Emporia,GEN1,Storage,VA,36.7,-77.5585,2,2,2,SERC,PJM
+Emporia,GEN2,Storage,VA,36.7,-77.5585,0.5,0.5,0.5,SERC,PJM
+Halifax,GEN1,RoR,VA,36.78,-78.9236,0.8,0.8,0.8,SERC,PJM
+Halifax,GEN2,RoR,VA,36.78,-78.9236,0.4,0.4,0.4,SERC,PJM
+Halifax,GEN3,RoR,VA,36.78,-78.9236,0.4,0.4,0.4,SERC,PJM
+Schoolfield Dam,SCH1,RoR,VA,36.58,-79.4339,1.5,1.5,1.5,SERC,PJM
+Schoolfield Dam,SCH2,RoR,VA,36.58,-79.4339,1.5,1.5,1.5,SERC,PJM
+Schoolfield Dam,SCH3,RoR,VA,36.58,-79.4339,1.5,1.5,1.5,SERC,PJM
+Buck,1,RoR,VA,36.81,-80.9386,2.8,3,5.3,RFC,PJM
+Buck,2,RoR,VA,36.81,-80.9386,2.8,3,5.3,RFC,PJM
+Buck,3,RoR,VA,36.81,-80.9386,2.8,3,5.3,RFC,PJM
+Byllesby,1,RoR,VA,36.79,-80.9336,5.4,7.9,4.4,RFC,PJM
+Byllesby,2,RoR,VA,36.79,-80.9336,5.4,7.9,4.4,RFC,PJM
+Byllesby,3,RoR,VA,36.79,-80.9336,5.4,7.9,4.4,RFC,PJM
+Byllesby,4,RoR,VA,36.79,-80.9336,5.4,7.9,4.4,RFC,PJM
+Claytor,1,RoR,VA,37.08,-80.5853,18.7,14.7,28.2,RFC,PJM
+Claytor,2,RoR,VA,37.08,-80.5853,18.7,14.7,28.2,RFC,PJM
+Claytor,3,RoR,VA,37.08,-80.5853,18.7,14.7,28.2,RFC,PJM
+Claytor,4,RoR,VA,37.08,-80.5853,18.7,14.7,28.2,RFC,PJM
+Radford,1,RoR,VA,37.08,-80.5728,1,1,1,RFC,PJM
+Fries Hydroelectric Project,GEN1,Storage,VA,36.71,-80.9867,2,2,2,RFC,PJM
+Fries Hydroelectric Project,GEN2,Storage,VA,36.71,-80.9867,0.8,0.8,0.7,RFC,PJM
+Fries Hydroelectric Project,GEN3,Storage,VA,36.71,-80.9867,0.2,0.2,0.2,RFC,PJM
+Fries Hydroelectric Project,GEN4,Storage,VA,36.71,-80.9867,2.4,2,2,RFC,PJM
+Bedford,4,RoR,VA,37.57,-79.3715,2.5,2.5,2.5,RFC,PJM
+Bedford,5,RoR,VA,37.57,-79.3715,2.5,2.5,2.5,RFC,PJM

@@ -1,0 +1,136 @@
+plant,generator ID,technology,energy_source ,prime_mover,lat,lon,nameplate_capacity,ba
+Remington Solar Facility,1,Solar Photovoltaic,SUN,PV,38.548333,-77.77639,20,PJM
+Coastal Virginia Offshore Wind (CVOW) Pi,OSW1,Offshore Wind Turbine,WND,WT,36.89155,-75.4916,12,PJM
+Western Branch High School,1,Solar Photovoltaic,SUN,PV,36.848105,-76.40714,1,PJM
+Merck,1,Solar Photovoltaic,SUN,PV,38.383222,-78.64369,2.1,PJM
+Philip Morris,1,Solar Photovoltaic,SUN,PV,37.341838,-77.28703,2,PJM
+"Eastern Shore Solar, LLC",PV1,Solar Photovoltaic,SUN,PV,37.943895,-75.56956,80,PJM
+Scott Solar Farm,1,Solar Photovoltaic,SUN,PV,37.523,-77.934,17,PJM
+Woodland Solar Farm,1,Solar Photovoltaic,SUN,PV,36.89,-76.611,19,PJM
+Whitehouse Solar Farm,1,Solar Photovoltaic,SUN,PV,38.023,-77.972,20,PJM
+Oceana Solar,1,Solar Photovoltaic,SUN,PV,36.789753,-76.05142,17.6,PJM
+Correctional Solar LLC,PV1,Solar Photovoltaic,SUN,PV,37.471464,-76.84461,20,PJM
+"Sussex Drive, LLC",PV1,Solar Photovoltaic,SUN,PV,36.940529,-77.41776,20,PJM
+Buckingham Solar LLC,PV1,Solar Photovoltaic,SUN,PV,37.502944,-78.37924,19.8,PJM
+Scott-II Solar LLC,PV1,Solar Photovoltaic,SUN,PV,37.526244,-77.94464,20,PJM
+Hollyfield,1,Solar Photovoltaic,SUN,PV,37.672005,-77.17044,17,PJM
+DG AMP Solar Front Royal,AMPFR,Solar Photovoltaic,SUN,PV,38.929,-78.18,2.5,PJM
+Bedford Solar,12346,Solar Photovoltaic,SUN,PV,37.335046,-79.481,3,PJM
+Mt. Jackson Solar,SOLAR,Solar Photovoltaic,SUN,PV,38.739621,-78.66016,15.7,PJM
+Hecate Energy Clarke County LLC,PV1,Solar Photovoltaic,SUN,PV,39.06485,-78.13821,10,PJM
+Hecate Energy Cherrydale LLC,PV1,Solar Photovoltaic,SUN,PV,37.37,-75.91717,20,PJM
+Essex Solar Center,ESSEX,Solar Photovoltaic,SUN,PV,37.834094,-76.79997,20,PJM
+"Southampton Solar, LLC",PV1,Solar Photovoltaic,SUN,PV,36.614,-77.166,100,PJM
+Palmer Solar Center,PALM,Solar Photovoltaic,SUN,PV,37.96724,-78.23096,5,PJM
+Martin Solar Center,MARTN,Solar Photovoltaic,SUN,PV,37.88051,-78.04919,5,PJM
+"Depot Solar Center, LLC",DEPOT,Solar Photovoltaic,SUN,PV,37.276278,-79.11651,15,PJM
+Danville,SO291,Solar Photovoltaic,SUN,PV,36.660591,-79.29906,6,PJM
+"Stratford Solar Center, LLC",STRAT,Solar Photovoltaic,SUN,PV,36.660483,-76.56093,15,PJM
+Colonial Trail West,CTWS,Solar Photovoltaic,SUN,PV,37.138889,-76.90222,142.4,PJM
+Spring Grove I,SGIS,Solar Photovoltaic,SUN,PV,37.173916,-76.91925,97.9,PJM
+Richmond Spider Solar,RMDSS,Solar Photovoltaic,SUN,PV,38.247123,-77.78622,20,PJM
+Pleinmont Solar 1,PLNM1,Solar Photovoltaic,SUN,PV,38.247123,-77.78622,75,PJM
+Pleinmont Solar 2,PLNM2,Solar Photovoltaic,SUN,PV,38.247123,-77.78622,240,PJM
+Highlander Solar Energy Station 1,HLND1,Solar Photovoltaic,SUN,PV,38.247123,-77.78622,165,PJM
+Puller Solar,PULL,Solar Photovoltaic,SUN,PV,37.57245,-76.46734,15,PJM
+IKEA Norfolk Rooftop PV System,569PV,Solar Photovoltaic,SUN,PV,36.875877,-76.20094,1.3,PJM
+Skipjack Solar Center,SKIPJ,Solar Photovoltaic,SUN,PV,37.437106,-77.15874,175,PJM
+Desper Solar,1,Solar Photovoltaic,SUN,PV,38.015735,-78.04313,88.2,PJM
+Meherrin Solar,MEHER,Solar Photovoltaic,SUN,PV,36.59,-77.65,59.6,PJM
+Piney Creek Solar,PCSOL,Solar Photovoltaic,SUN,PV,36.818554,-78.77189,80,PJM
+"Rappahannock Solar, LLC",100,Solar Photovoltaic,SUN,PV,37.657039,-76.38323,1.5,PJM
+Grasshopper Solar,GRHS,Solar Photovoltaic,SUN,PV,36.85,-78.45,80,PJM
+Sadler Solar,SADL,Solar Photovoltaic,SUN,PV,36.6867,-77.558,100,PJM
+NASA Wallops Flight Facility Solar,CRPT5,Solar Photovoltaic,SUN,PV,37.938056,-75.47361,0.1,PJM
+NASA Wallops Flight Facility Solar,CRPT6,Solar Photovoltaic,SUN,PV,37.938056,-75.47361,0.1,PJM
+NASA Wallops Flight Facility Solar,CRPT7,Solar Photovoltaic,SUN,PV,37.938056,-75.47361,0.1,PJM
+NASA Wallops Flight Facility Solar,TRCK1,Solar Photovoltaic,SUN,PV,37.938056,-75.47361,4,PJM
+Bluestone Solar,BLUE1,Solar Photovoltaic,SUN,PV,36.811533,-78.48391,49.9,PJM
+Whitehorn Solar,WHIT1,Solar Photovoltaic,SUN,PV,36.931378,-79.35874,50,PJM
+Gloucester Solar,GLSO,Solar Photovoltaic,SUN,PV,37.45,-76.45,19.9,PJM
+"Twittys Creek Solar, LLC",VATC,Solar Photovoltaic,SUN,PV,37.018427,-78.58127,13.8,PJM
+Caden Energix Pamplin LLC,ENX04,Solar Photovoltaic,SUN,PV,37.32936,-78.76591,15.7,PJM
+Caden Energix Hickory LLC,ENX02,Solar Photovoltaic,SUN,PV,36.624113,-76.19427,20,PJM
+Caden Energix Hickory LLC,ENX03,Solar Photovoltaic,SUN,PV,36.624113,-76.19427,12,PJM
+Caden Energix Rives Road LLC,ENX01,Solar Photovoltaic,SUN,PV,37.177825,-77.33765,19.7,PJM
+Water Strider Solar,WSS,Solar Photovoltaic,SUN,PV,37.016375,-79.02706,80,PJM
+Westmoreland County Solar Project,WEST,Solar Photovoltaic,SUN,PV,38.007488,-76.74403,19.9,PJM
+"Greensville County Solar Project, LLC",GVSO,Solar Photovoltaic,SUN,PV,36.64,-77.57,80,PJM
+"TWE Myrtle Solar Farm, LLC",MYSO,Solar Photovoltaic,SUN,PV,36.79,-76.67,15,PJM
+Otter Creek Solar,OTTER,Solar Photovoltaic,SUN,PV,36.807131,-78.50977,60,PJM
+"Danville Farm, LLC",1,Solar Photovoltaic,SUN,PV,36.591,-79.302,12,PJM
+"Energix Hollyfield, LLC",ENX06,Solar Photovoltaic,SUN,PV,37.671,-77.17,13,PJM
+"Energix Nokesville, LLC",ENX07,Solar Photovoltaic,SUN,PV,38.672,-77.593,20,PJM
+"Energix Buckingham, LLC",ENX05,Solar Photovoltaic,SUN,PV,37.5064,-78.381,20,PJM
+Altavista Solar,ATLA,Solar Photovoltaic,SUN,PV,37.148199,-79.3475,80,PJM
+Norge Solar Farm,NORG,Solar Photovoltaic,SUN,PV,37.365615,-76.77512,20,PJM
+Montross Solar,MOSO,Solar Photovoltaic,SUN,PV,38.077,-76.786,20,PJM
+Grassfield Solar,GFSO,Solar Photovoltaic,SUN,PV,36.65,-76.35,20,PJM
+Sycamore Solar,SYSO,Solar Photovoltaic,SUN,PV,36.942634,-79.1928,42,PJM
+Mechanicsville Solar,MECH,Solar Photovoltaic,SUN,PV,37.665975,-77.20773,25,PJM
+Wythe County Solar,GEN1,Solar Photovoltaic,SUN,PV,36.876,-80.837,75,PJM
+"Energix Leatherwood, LLC",ENX10,Solar Photovoltaic,SUN,PV,36.687071,-79.70947,20,PJM
+Gardy's Mill Solar,GMS,Solar Photovoltaic,SUN,PV,38.006741,-76.60696,14,PJM
+Briel Solar Farm,BMS,Solar Photovoltaic,SUN,PV,37.52364,-77.26358,20,PJM
+"Energix Aditya, LLC",ENX13,Solar Photovoltaic,SUN,PV,38.017664,-77.95287,11.5,PJM
+"Caden Energix Endless Caverns, LLC",ENX16,Solar Photovoltaic,SUN,PV,38.613601,-78.67707,31.4,PJM
+Pleasant Hill Solar,PHSPV,Solar Photovoltaic,SUN,PV,36.692197,-76.57856,20,PJM
+Watlington Solar,WSPV,Solar Photovoltaic,SUN,PV,36.681547,-78.88596,20,PJM
+"Apple Grove Solar, LLC",ENX15,Solar Photovoltaic,SUN,PV,37.919497,-77.86202,18.6,PJM
+"Waverly Solar, LLC",ENX17,Solar Photovoltaic,SUN,PV,37.020784,-77.12265,118,PJM
+Powells Creek Solar - Hybrid,SOLAR,Solar Photovoltaic,SUN,PV,36.55467,-79.0286,70,PJM
+Sunnybrook Solar Project - Hybrid,SUNS,Solar Photovoltaic,SUN,PV,36.798717,-78.83961,51,PJM
+Caden Energix Wytheville LLC,ENX19,Solar Photovoltaic,SUN,PV,36.964279,-81.04986,20,PJM
+Springfield Solar,SPRG,Solar Photovoltaic,SUN,PV,38.093,-76.799,2,PJM
+Quillwort Solar,POWI,Solar Photovoltaic,SUN,PV,37.567,-77.9271,18,PJM
+Maplewood Solar,MAPL,Solar Photovoltaic,SUN,PV,36.89,-79.32,120,PJM
+Sebera Solar,SEBE,Solar Photovoltaic,SUN,PV,37.25,-77.25,18,PJM
+Rochambeau Solar,RBSO,Solar Photovoltaic,SUN,PV,37.35,-76.76,19.9,PJM
+Fort Powhatan Solar,FTPW,Solar Photovoltaic,SUN,PV,37.26,-77.08,150,PJM
+Bedford Solar,BEDF,Solar Photovoltaic,SUN,PV,36.7,-76.1647,70,PJM
+"HCE Amelia Solar I, LLC",AML1,Solar Photovoltaic,SUN,PV,37.45383,-77.95682,5,PJM
+"HCE Amelia Solar II, LLC",AML2,Solar Photovoltaic,SUN,PV,37.481141,-77.96789,5,PJM
+"HCE Millboro Springs Solar, LLC",MLBS,Solar Photovoltaic,SUN,PV,37.99997,-79.56874,5,PJM
+"HCE Moran Solar, LLC",MORAN,Solar Photovoltaic,SUN,PV,37.229858,-78.27129,3,PJM
+"HCE Powhatan Solar, LLC",POW,Solar Photovoltaic,SUN,PV,37.52885,-77.95977,5,PJM
+"HCE Reams Solar, LLC",REAMS,Solar Photovoltaic,SUN,PV,37.09028,-77.48346,5,PJM
+"HCE Red House Solar, LLC",REDHS,Solar Photovoltaic,SUN,PV,37.18378,-78.81415,5,PJM
+"HCE Roark Mill Solar, LLC",RKML,Solar Photovoltaic,SUN,PV,37.05622,-79.3051,3.2,PJM
+"Bartonsville Energy Facility, LLC",BTS,Solar Photovoltaic,SUN,PV,39.088731,-78.2399,130,PJM
+Bookers Mill Solar,BMSO,Solar Photovoltaic,SUN,PV,37.86,-76.56,127,PJM
+Madison Solar,MDSO,Solar Photovoltaic,SUN,PV,38.28775,-77.84005,62.5,PJM
+Chesapeake Solar Project,CHSP,Solar Photovoltaic,SUN,PV,36.685103,-76.29661,132,PJM
+Caden Energix Axton LLC,ENX20,Solar Photovoltaic,SUN,PV,36.667889,-79.75501,66,PJM
+Alton Post Office Solar,ALPT1,Solar Photovoltaic,SUN,PV,36.568918,-79.03292,75,PJM
+Crystal Hill Solar,CRYH1,Solar Photovoltaic,SUN,PV,36.839909,-78.9382,64.7,PJM
+Foxglove Solar,FOXG1,Solar Photovoltaic,SUN,PV,39.073825,-78.28012,75,PJM
+Hemings Solar,METER,Solar Photovoltaic,SUN,PV,37.957975,-76.81883,5,PJM
+Monroe Solar,METER,Solar Photovoltaic,SUN,PV,36.85345,-79.46991,2.2,PJM
+Solidago Solar,SLDO,Solar Photovoltaic,SUN,PV,36.89,-76.71,20,PJM
+Randolf Solar,METER,Solar Photovoltaic,SUN,PV,38.745097,-78.67523,3.2,PJM
+Small Mouth Bass Solar,METER,Solar Photovoltaic,SUN,PV,37.906257,-79.40387,2.5,PJM
+White Stone Ocran Solar LLC Community So,WHITE,Solar Photovoltaic,SUN,PV,37.6529,-76.3888,5,PJM
+Prince Edward CSG LLC,PRINC,Solar Photovoltaic,SUN,PV,37.2259,-78.6877,4,PJM
+Foxhound,F2024,Solar Photovoltaic,SUN,PV,36.875897,-78.74187,83,PJM
+"Shifting Sands Solar, LLC",ENX24,Solar Photovoltaic,SUN,PV,36.616243,-79.84936,18.8,PJM
+"Sunny Rock Solar, LLC",ENX23,Solar Photovoltaic,SUN,PV,36.608705,-79.87988,20,PJM
+"River Trail Solar, LLC",ENX22,Solar Photovoltaic,SUN,PV,36.709453,-80.88508,20,PJM
+Amherst Solar Facility (VA),1,Solar Photovoltaic,SUN,PV,37.553598,-79.0173,4.9,PJM
+Cunningham Solar LLC,11111,Solar Photovoltaic,SUN,PV,37.8893,-78.323,5,PJM
+The Village at Orchard Ridge (TVOR),P5412,Solar Photovoltaic,SUN,PV,39.201562,-78.21391,1.4,PJM
+Carvers Creek Solar,CARV,Solar Photovoltaic,SUN,PV,37.56189,-76.60537,54.9,PJM
+"TPE Irish Road Solar, LLC",IRISH,Solar Photovoltaic,SUN,PV,36.727159,-79.50649,5,PJM
+"TPE Whitmell Solar, LLC",WHITM,Solar Photovoltaic,SUN,PV,36.727159,-79.50649,5,PJM
+Cavalier Solar,CAVPV,Solar Photovoltaic,SUN,PV,37.018,-76.7358,155.6,PJM
+Cavalier Solar A2,CAVA2,Solar Photovoltaic,SUN,PV,37.018,-76.7358,84.4,PJM
+Mineral Gap,MGPV1,Solar Photovoltaic,SUN,PV,36.99716,-82.52662,3,LGEE
+"Augusta CSG, LLC",AUGUS,Solar Photovoltaic,SUN,PV,38.100152,-78.96471,2.9,PJM
+"Waynesboro Bridge Solar, LLC Community S",WAYNE,Solar Photovoltaic,SUN,PV,38.102168,-78.92343,5,PJM
+"Suffolk CSG, LLC",SUFFO,Solar Photovoltaic,SUN,PV,36.68565,-76.763,3.8,PJM
+"Fairfield Lee Solar, LLC Community Solar",FAIRF,Solar Photovoltaic,SUN,PV,37.878085,-79.39692,5,PJM
+Rivanna Solar,RIVA,Solar Photovoltaic,SUN,PV,37.966,-78.4,13.3,PJM
+Halifax CSG LLC,HALIF,Solar Photovoltaic,SUN,PV,36.679324,-78.93916,3.1,PJM
+VA- US Foods- Manassas,USM,Solar Photovoltaic,SUN,PV,38.786044,-77.55476,2,PJM
+North Stafford HS,NOSPV,Solar Photovoltaic,SUN,PV,38.467778,-77.45528,1.3,PJM
+Fountain Creek Solar,FTCR,Solar Photovoltaic,SUN,PV,36.59,-77.67,80,PJM
+Winterberry Solar,WNTB,Solar Photovoltaic,SUN,PV,37.36,-76.53,20,PJM
