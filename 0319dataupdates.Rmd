@@ -126,6 +126,7 @@ map_technology = function(df, source = "EI") {
   if (source == "EI") {
     df %>%
       mutate(tech_group = case_when(
+        fuel == "NUCLEAR" ~ "Nuclear",
         generator_type %in% c("Solar") ~ "Solar",
         generator_type %in% c("Wind") ~ "Wind",
         generator_type %in% c("Hydro") ~ "Hydro",
@@ -291,15 +292,23 @@ va_summary %>%
     pct_diff_total
   ) %>%
   kable(digits = 1, caption = "VA Capacity Comparison (Available vs Total EI)")
-ggplot(va_summary, aes(x = tech_group)) +
-  geom_bar(aes(y = EI_available_capacity, fill = "EI Available"),
-           stat = "identity", position = "dodge") +
-  geom_bar(aes(y = EIA_capacity, fill = "EIA"),
-           stat = "identity", position = "dodge") +
-  facet_wrap(~state) +
+
+va_plot_df <- va_summary %>%
+  select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
+  pivot_longer(
+    cols = c(EI_available_capacity, EIA_capacity),
+    names_to = "source",
+    values_to = "capacity"
+  )
+ggplot(va_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   theme_minimal() +
-  labs(title = "Installed Capacity (Available EI vs EIA)",
-       y = "MW", x = "Technology")
+  labs(
+    title = "Installed Capacity Comparison (VA)",
+    y = "MW",
+    x = "Technology",
+    fill = "Source"
+  )
 ```
 
 
@@ -316,15 +325,24 @@ md_summary %>%
     pct_diff_total
   ) %>%
   kable(digits = 1, caption = "MD Capacity Comparison (Available vs Total EI)")
-ggplot(md_summary, aes(x = tech_group)) +
-  geom_bar(aes(y = EI_available_capacity, fill = "EI Available"),
-           stat = "identity", position = "dodge") +
-  geom_bar(aes(y = EIA_capacity, fill = "EIA"),
-           stat = "identity", position = "dodge") +
-  facet_wrap(~state) +
+md_plot_df <- md_summary %>%
+  select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
+  pivot_longer(
+    cols = c(EI_available_capacity, EIA_capacity),
+    names_to = "source",
+    values_to = "capacity"
+  )
+
+ggplot(md_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   theme_minimal() +
-  labs(title = "Installed Capacity (Available EI vs EIA)",
-       y = "MW", x = "Technology")
+  labs(
+    title = "Installed Capacity Comparison (MD)",
+    y = "MW",
+    x = "Technology",
+    fill = "Source"
+  )
+
 ```
 
 ---
@@ -559,12 +577,18 @@ compare_by_type = function(ei_gens, eia_gens, type = "Solar", coord_tolerance = 
   
   # ── 1. Type → filter mappings ──────────────────────────────────────────────
   ei_type_map = list(
-    "Solar"   = c("Solar"),
-    "Wind"    = c("Wind"),
-    "Hydro"   = c("Hydro"),
-    "Thermal" = c("ThermalStandard", "ThermalMultiStart"),
-    "Storage" = c("Storage")
-  )
+  "Solar"   = c("Solar"),
+  "Wind"    = c("Wind"),
+  "Hydro"   = c("Hydro"),
+  "Thermal" = c("ThermalStandard", "ThermalMultiStart"),
+  "Nuclear" = c("ThermalStandard"),   # 👈 special handling
+  "Storage" = c("Storage")
+)
+  
+  if (type == "Nuclear") {
+  ei_filtered = ei_gens %>%
+    filter(generator_type == "ThermalStandard", fuel == "NUCLEAR")
+}
   
   eia_type_map = list(
   "Solar"   = c("Solar Photovoltaic"),
@@ -572,6 +596,7 @@ compare_by_type = function(ei_gens, eia_gens, type = "Solar", coord_tolerance = 
   "Hydro"   = c("Conventional Hydroelectric", "Run-of-River Hydroelectric", "Hydro"),
   "Thermal" = c("Natural Gas Steam Turbine", "Natural Gas Fired Combined Cycle",
                 "Natural Gas Fired Combustion Turbine", "Coal Steam Turbine"),
+  "Nuclear" = c("Nuclear"),
   "Storage" = c("Batteries")
 )
   
@@ -580,7 +605,11 @@ compare_by_type = function(ei_gens, eia_gens, type = "Solar", coord_tolerance = 
   }
   
   # ── 2. Filter by type ──────────────────────────────────────────────────────
-  ei_filtered = ei_gens %>% filter(generator_type %in% ei_type_map[[type]])
+  ei_filtered = ei_gens %>%
+  filter(
+    generator_type %in% ei_type_map[[type]] &
+    !(type == "Thermal" & fuel == "NUCLEAR")
+  )
   
   # Use column override if needed
   if (!eia_type_col %in% colnames(eia_gens)) {
@@ -682,30 +711,30 @@ if (!is.null(hydro_results) && !is.null(hydro_results$in_both_grouped)) {
 ### Thermal
 
 ```{r}
-eia_va_thermal_tech <- eia_va_thermal %>%
-  mutate(technology = "Thermal")
-thermal_results = compare_by_type(
-  VA_ei_gens,
-  eia_va_thermal_tech,
-  type = "Thermal",
-  coord_tolerance = 0.2,
-  eia_type_col = "technology",
-  eia_type_values = c(
-    "Natural Gas Steam Turbine",
-    "Natural Gas Fired Combined Cycle",
-    "Natural Gas Fired Combustion Turbine",
-    "Coal Steam Turbine"
-  )
-)
-
-thermal_results$in_both_grouped %>%
-  dplyr::select(
-    n_eia_generators, eia_plant_names, n_ei_generators, BusNames,
-    Rating, eia_capacity, 
-    capacity_diff, capacity_abs_diff,
-    capacity_pct_diff, capacity_abs_pct_diff,   
-    ei_lat, eia_lat, ei_lon, eia_lon
-  ) %>%
-  dplyr::arrange((capacity_abs_pct_diff))
+# eia_va_thermal_tech <- eia_va_thermal %>%
+#   mutate(technology = "Thermal")
+# thermal_results = compare_by_type(
+#   VA_ei_gens,
+#   eia_va_thermal_tech,
+#   type = "Thermal",
+#   coord_tolerance = 0.2,
+#   eia_type_col = "technology",
+#   eia_type_values = c(
+#     "Natural Gas Steam Turbine",
+#     "Natural Gas Fired Combined Cycle",
+#     "Natural Gas Fired Combustion Turbine",
+#     "Coal Steam Turbine"
+#   )
+# )
+# 
+# thermal_results$in_both_grouped %>%
+#   dplyr::select(
+#     n_eia_generators, eia_plant_names, n_ei_generators, BusNames,
+#     Rating, eia_capacity, 
+#     capacity_diff, capacity_abs_diff,
+#     capacity_pct_diff, capacity_abs_pct_diff,   
+#     ei_lat, eia_lat, ei_lon, eia_lon
+#   ) %>%
+#   dplyr::arrange((capacity_abs_pct_diff))
 ```
 
