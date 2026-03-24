@@ -21,6 +21,11 @@ library(ggplot2)
 library(tidyr) 
 library(knitr)
 library(readxl)
+library(stringr)
+library(dplyr)
+library(readr)
+library(stringdist)
+library(purrr)
 ```
 
 # Overview
@@ -45,120 +50,285 @@ The goal is to ensure consistency in installed capacity before running simulatio
 ```{r cars, message = FALSE}
 # EI datasets 
 VA_ei_gens = read_csv("~/Downloads/virginia_resources.csv") 
-MD_ei_gens = read_csv("~/Downloads/maryland_resources.csv") 
+MD_ei_gens = read_csv("~/Downloads/maryland_resources.csv")
+WV_ei_gens = read_csv("~/Downloads/west_virginia_resources.csv")
 
-#WV_ei_gens = read_csv("~/Downloads/westvirginia_resources.csv") 
-# EIA datasets 
-# Renewable 
-eia_va_renew = read_csv("~/Documents/GitHub/va_updates/renewable_VA_EIA.csv") 
-# Hydro 
-eia_va_hydro = read_csv("~/Documents/GitHub/va_updates/va_hydro_EIA.csv") 
-# Thermal 
-eia_va_thermal = read_excel("~/Documents/GitHub/va_updates/Thermal_EIA.xlsx")
+#EIA
+eia_all <- read_excel("3_1_Generator_Y2024.xlsx", sheet = "Operable", skip = 1, col_types = "text")
 
-# Combine all VA EIA datasets 
-eia_va <- bind_rows( eia_va_renew, eia_va_hydro, eia_va_thermal )
+eia_all <- eia_all %>%
+  mutate(
+    `Nameplate Capacity (MW)` = as.numeric(`Nameplate Capacity (MW)`),
+    `Summer Capacity (MW)` = as.numeric(`Summer Capacity (MW)`),
+    `Winter Capacity (MW)` = as.numeric(`Winter Capacity (MW)`),
+    `Minimum Load (MW)` = as.numeric(`Minimum Load (MW)`),
+    `Nameplate Power Factor` = as.numeric(`Nameplate Power Factor`)
+  ) %>%
+  rename(nameplate_capacity = `Nameplate Capacity (MW)`)
+eia_va <- eia_all %>% filter(State == "VA")
+eia_md <- eia_all %>% filter(State == "MD")
+eia_wv <- eia_all %>% filter(State == "WV")
 
-# Renewable 
-eia_md_renew = read_csv("~/Documents/GitHub/md_update/Renewable_EIA.csv") 
-# Hydro 
-eia_md_hydro = read_csv("~/Documents/GitHub/md_update/Hydro_EIA.csv")
-# Thermal 
-eia_md_thermal = read_csv("~/Documents/GitHub/md_update/Thermal_EIA.csv")
-eia_md_renew <- eia_md_renew %>%
-  mutate(`generator ID` = as.character(`generator ID`))
 
-eia_md_hydro <- eia_md_hydro %>%
-  mutate(`generator ID` = as.character(`generator ID`))
-
-eia_md_thermal <- eia_md_thermal %>%
-  mutate(`generator ID` = as.character(`generator ID`))
-
-eia_md <- bind_rows( eia_md_renew, eia_md_hydro, eia_md_thermal )
-#eia_wv = read_csv("renewable_WV_EIA.csv")
+# # EIA datasets 
+# # Renewable 
+# eia_va_renew = read_csv("~/Documents/GitHub/va_updates/renewable_VA_EIA.csv") 
+# # Hydro 
+# eia_va_hydro = read_csv("~/Documents/GitHub/va_updates/va_hydro_EIA.csv") 
+# # Thermal 
+# eia_va_thermal = read_excel("~/Documents/GitHub/va_updates/Thermal_EIA.xlsx")
+# 
+# # Combine all VA EIA datasets 
+# eia_va = bind_rows( eia_va_renew, eia_va_hydro, eia_va_thermal )
+# 
+# # Renewable 
+# eia_md_renew = read_csv("~/Documents/GitHub/md_update/Renewable_EIA.csv") 
+# # Hydro 
+# eia_md_hydro = read_csv("~/Documents/GitHub/md_update/Hydro_EIA.csv")
+# # Thermal 
+# eia_md_thermal = read_csv("~/Documents/GitHub/md_update/Thermal_EIA.csv")
+# eia_md_renew = eia_md_renew %>%
+#   mutate(`generator ID` = as.character(`generator ID`))
+# 
+# eia_md_hydro = eia_md_hydro %>%
+#   mutate(`generator ID` = as.character(`generator ID`))
+# 
+# eia_md_thermal = eia_md_thermal %>%
+#   mutate(`generator ID` = as.character(`generator ID`))
+# 
+# eia_md = bind_rows( eia_md_renew, eia_md_hydro, eia_md_thermal )
+# #eia_wv = read_csv("renewable_WV_EIA.csv")
 ```
 
 ```{r}
-clean_eia <- function(df, state_name) {
+# clean_eia = function(df, state_name) {
+#   df %>%
+#     mutate(
+#       # Fill technology using mode when missing
+#       technology = case_when(
+#         !is.na(technology) ~ technology,
+#         mode == "Storage" ~ "Pumped Storage Hydroelectric",
+#         mode == "RoR" ~ "Run-of-River Hydroelectric",
+#         TRUE ~ "Unknown"
+#       ),
+#       
+#       # Add state
+#       state = state_name
+#     )
+# }
+# eia_va = clean_eia(eia_va, "VA")
+# eia_md = clean_eia(eia_md, "MD")
+# 
+# clean_eia_final = function(df) {
+#   df %>%
+#     select(
+#       plant,
+#       `generator ID`,
+#       technology,
+#       lat,
+#       lon,
+#       nameplate_capacity,
+#       ba,
+#       state
+#     ) %>%
+#     filter(!is.na(lat) & !is.na(lon))  # remove bad rows
+# }
+# 
+# eia_va = clean_eia_final(eia_va)
+# eia_md = clean_eia_final(eia_md)
+```
+
+```{r}
+# Function to map EIA generators to high-level tech groups
+map_tech_group <- function(df) {
   df %>%
     mutate(
-      # Fill technology using mode when missing
-      technology = case_when(
-        !is.na(technology) ~ technology,
-        mode == "Storage" ~ "Pumped Storage Hydroelectric",
-        mode == "RoR" ~ "Run-of-River Hydroelectric",
-        TRUE ~ "Unknown"
-      ),
-      
-      # Add state
-      state = state_name
+      tech_group = case_when(
+        # Nuclear
+        `Prime Mover` == "NU" | Technology == "Nuclear" ~ "Nuclear",
+        
+        # Pumped Storage
+        `Prime Mover` == "PS" | str_detect(Technology, "Pumped Storage") ~ "Pumped Storage",
+        
+        # Hydro (excluding Pumped Storage)
+        `Prime Mover` == "HY" | str_detect(Technology, "Hydroelectric") & !str_detect(Technology, "Pumped Storage") ~ "Hydro",
+        
+        # Wind
+        `Prime Mover` == "WT" | str_detect(Technology, "Wind") ~ "Wind",
+        
+        # Solar
+        `Prime Mover` %in% c("PV", "CE") | str_detect(Technology, "Solar") ~ "Solar",
+        
+        # Thermal / Fossil
+        `Prime Mover` %in% c("ST", "CT", "CA", "GT", "IC", "CS", "FC", "CP") |
+          Technology %in% c(
+            "Conventional Steam Coal", 
+            "Natural Gas Fired Combined Cycle", 
+            "Natural Gas Steam Turbine",
+            "Coal Integrated Gasification Combined Cycle",
+            "Natural Gas Fired Combustion Turbine",
+            "Natural Gas Internal Combustion Engine"
+          ) ~ "Thermal",
+        
+        # Batteries / Storage / Flywheels
+        `Prime Mover` %in% c("BA", "BT", "FW") | str_detect(Technology, "Battery|Flywheels|Storage") ~ "Batteries",
+        
+        # Biomass / Waste / Geothermal / Other
+        str_detect(Technology, "Biomass|Waste|Geothermal|Other") ~ "Other",
+        
+        # Fallback
+        TRUE ~ "Other"
+      )
     )
 }
-eia_va <- clean_eia(eia_va, "VA")
-eia_md <- clean_eia(eia_md, "MD")
-
-clean_eia_final <- function(df) {
-  df %>%
-    select(
-      plant,
-      `generator ID`,
-      technology,
-      lat,
-      lon,
-      nameplate_capacity,
-      ba,
-      state
-    ) %>%
-    filter(!is.na(lat) & !is.na(lon))  # remove bad rows
-}
-
-eia_va <- clean_eia_final(eia_va)
-eia_md <- clean_eia_final(eia_md)
+# Clean and map tech_group for all three states
+eia_va <- eia_va %>% map_tech_group()
+eia_md <- eia_md %>% map_tech_group()
+eia_wv <- eia_wv %>% map_tech_group()
 ```
+
 
 
 
 ## Technology Mapping
 
 ```{r tech-mapping}
+# map_technology = function(df, source = "EI") {
+# 
+#   if (source == "EI") {
+#     df %>%
+#       mutate(tech_group = case_when(
+#         fuel == "NUCLEAR" ~ "Nuclear",
+#         generator_type %in% c("Solar") ~ "Solar",
+#         generator_type %in% c("Wind") ~ "Wind",
+#         generator_type %in% c("Hydro") ~ "Hydro",
+#         generator_type %in% c("ThermalStandard", "ThermalMultiStart") ~ "Thermal",
+#         generator_type %in% c("Storage") ~ "Storage",
+#         TRUE ~ "Other"
+#       ))
+# 
+#   } else {
+#     df %>%
+#       mutate(tech_group = case_when(
+#         grepl("Solar", technology) ~ "Solar",
+#         grepl("Wind", technology) ~ "Wind",
+#         grepl("Hydro", technology) ~ "Hydro",
+#         grepl("Pumped Storage", technology) ~ "Storage",
+#         grepl("Battery|Storage", technology) ~ "Storage",
+#         grepl("Nuclear", technology) ~ "Nuclear",
+#         grepl("Gas|Coal|Petroleum|Steam|Combustion", technology) ~ "Thermal",
+#         grepl("Biomass|Waste|Landfill", technology) ~ "Other",
+#         TRUE ~ "Other"
+#       ))
+#   }
+# }
+# 
+# # Summarize function including units for both EI and EIA
+# summarize_capacity_units = function(ei_df, eia_df, state_name) {
+# 
+#   ei_clean  = map_technology(ei_df, "EI")
+#   eia_clean = map_technology(eia_df, "EIA")
+# 
+#   # EI summary
+#   ei_summary = ei_clean %>%
+#     group_by(tech_group) %>%
+#     summarise(
+#       EI_total_units = n(),
+#       EI_available_units = sum(available == TRUE, na.rm = TRUE),
+#       EI_total_capacity = sum(rating, na.rm = TRUE),
+#       EI_available_capacity = sum(rating[available == TRUE], na.rm = TRUE),
+#       .groups = "drop"
+#     )
+# 
+#   # EIA summary
+#   eia_summary = eia_clean %>%
+#     group_by(tech_group) %>%
+#     summarise(
+#       EIA_units = n(),
+#       EIA_capacity = sum(nameplate_capacity, na.rm = TRUE),
+#       .groups = "drop"
+#     )
+# 
+#   # Join and calculate differences
+#   full_join(ei_summary, eia_summary, by = "tech_group") %>%
+#     mutate(
+#       state = state_name,
+#       diff_available_capacity = EI_available_capacity - EIA_capacity,
+#       pct_diff_available_capacity = ifelse(EIA_capacity > 0,
+#                                            (diff_available_capacity / EIA_capacity) * 100,
+#                                            NA),
+#       diff_total_capacity = EI_total_capacity - EIA_capacity,
+#       pct_diff_total_capacity = ifelse(EIA_capacity > 0,
+#                                        (diff_total_capacity / EIA_capacity) * 100,
+#                                        NA)
+#     ) %>%
+#     select(state, tech_group, EI_total_units, EI_available_units, EIA_units,
+#            EI_total_capacity, EI_available_capacity, EIA_capacity,
+#            diff_total_capacity, pct_diff_total_capacity,
+#            diff_available_capacity, pct_diff_available_capacity)
+# }
+
+```
+
+```{r}
 map_technology = function(df, source = "EI") {
   
   if (source == "EI") {
+    
     df %>%
-      mutate(tech_group = case_when(
-        fuel == "NUCLEAR" ~ "Nuclear",
-        generator_type %in% c("Solar") ~ "Solar",
-        generator_type %in% c("Wind") ~ "Wind",
-        generator_type %in% c("Hydro") ~ "Hydro",
-        generator_type %in% c("ThermalStandard", "ThermalMultiStart") ~ "Thermal",
-        generator_type %in% c("Storage") ~ "Storage",
-        TRUE ~ "Other"
-      ))
+      mutate(
+        tech_group = case_when(
+          fuel == "NUCLEAR" ~ "Nuclear",
+          generator_type %in% c("Solar") ~ "Solar",
+          generator_type %in% c("Wind") ~ "Wind",
+          generator_type %in% c("ThermalStandard", "ThermalMultiStart") ~ "Thermal",
+          generator_type %in% c("Storage") ~ "Storage",
+          prime_mover_type == "PS" ~ "Pumped Storage",
+          generator_type %in% c("Hydro") ~ "Hydro",
+          TRUE ~ "Other"
+        )
+      )
     
   } else {
+    
     df %>%
-      mutate(tech_group = case_when(
-        grepl("Solar", technology) ~ "Solar",
-        grepl("Wind", technology) ~ "Wind",
-        grepl("Hydro", technology) ~ "Hydro",
-        grepl("Pumped Storage", technology) ~ "Storage",
-        grepl("Battery|Storage", technology) ~ "Storage",
-        grepl("Nuclear", technology) ~ "Nuclear",
-        grepl("Gas|Coal|Petroleum|Steam|Combustion", technology) ~ "Thermal",
-        grepl("Biomass|Waste|Landfill", technology) ~ "Other",
-        TRUE ~ "Other"
-      ))
+      mutate(
+        tech_group = case_when(
+          
+          # --- Explicit first (avoid misclassification) ---
+          Technology == "Nuclear" ~ "Nuclear",
+          
+          Technology == "Hydroelectric Pumped Storage" | `Prime Mover` == "PS" ~ "Pumped Storage",
+          
+          Technology == "Conventional Hydroelectric" ~ "Hydro",
+          
+          Technology == "Batteries" ~ "Batteries",
+          
+          Technology %in% c("Flywheels", "Natural Gas with Compressed Air Storage") ~ "Storage",
+          
+          # --- Pattern-based (your original strength) ---
+          grepl("Solar", Technology) ~ "Solar",
+          grepl("Wind", Technology) ~ "Wind",
+          
+          grepl("Hydro", Technology) & !grepl("Pumped Storage", Technology) ~ "Hydro",
+          
+          grepl("Gas|Coal|Petroleum|Steam|Combustion", Technology) ~ "Thermal",
+          
+          grepl("Biomass|Waste|Landfill|Geothermal", Technology) ~ "Other",
+          
+          TRUE ~ "Other"
+        )
+      )
   }
 }
-
 # Summarize function including units for both EI and EIA
-summarize_capacity_units <- function(ei_df, eia_df, state_name) {
-  
-  ei_clean  <- map_technology(ei_df, "EI")
-  eia_clean <- map_technology(eia_df, "EIA")
-  
+summarize_capacity_units = function(ei_df, eia_df, state_name) {
+
+  ei_clean  = map_technology(ei_df, "EI")
+  eia_clean = map_technology(eia_df, "EIA")
+
   # EI summary
-  ei_summary <- ei_clean %>%
+  ei_summary = ei_clean %>%
     group_by(tech_group) %>%
     summarise(
       EI_total_units = n(),
@@ -167,18 +337,18 @@ summarize_capacity_units <- function(ei_df, eia_df, state_name) {
       EI_available_capacity = sum(rating[available == TRUE], na.rm = TRUE),
       .groups = "drop"
     )
-  
+
   # EIA summary
-  eia_summary <- eia_clean %>%
+  eia_summary = eia_clean %>%
     group_by(tech_group) %>%
     summarise(
       EIA_units = n(),
       EIA_capacity = sum(nameplate_capacity, na.rm = TRUE),
       .groups = "drop"
     )
-  
-  # Join and calculate differences
-  full_join(ei_summary, eia_summary, by = "tech_group") %>%
+
+  # Join summaries and calculate differences
+  summary_df = full_join(ei_summary, eia_summary, by = "tech_group") %>%
     mutate(
       state = state_name,
       diff_available_capacity = EI_available_capacity - EIA_capacity,
@@ -194,64 +364,71 @@ summarize_capacity_units <- function(ei_df, eia_df, state_name) {
            EI_total_capacity, EI_available_capacity, EIA_capacity,
            diff_total_capacity, pct_diff_total_capacity,
            diff_available_capacity, pct_diff_available_capacity)
+
+  # Optional: reorder tech groups
+  tech_order = c("Nuclear", "Thermal", "Hydro", "Pumped Storage", "Storage", "Solar", "Wind", "Other")
+  summary_df$tech_group = factor(summary_df$tech_group, levels = tech_order)
+  summary_df = summary_df %>% arrange(tech_group)
+
+  return(summary_df)
 }
-
 ```
 
-```{r}
 
-ei_va_mapped <- map_technology(VA_ei_gens, "EI")
-ei_md_mapped <- map_technology(MD_ei_gens, "EI")
-
-```
 
 ### VA 
 ```{r}
-## Run for VA and MD
-va_summary_units <- summarize_capacity_units(VA_ei_gens, eia_va, "VA")
+## Run for VA
+va_summary_units = summarize_capacity_units(VA_ei_gens, eia_va, "VA")
 va_summary_units
 ```
 
 ### MD
 
 ```{r}
-md_summary_units <- summarize_capacity_units(MD_ei_gens, eia_md, "MD")
-
+md_summary_units = summarize_capacity_units(MD_ei_gens, eia_md, "MD")
 md_summary_units
+```
+
+### WV
+
+```{r}
+wv_summary_units = summarize_capacity_units(WV_ei_gens, eia_wv, "WV")
+wv_summary_units
 ```
 
 ## Capacity Summary Comparison
 
 ```{r summary-function}
-summarize_capacity_by_state <- function(ei_df, eia_df, state_name) {
+summarize_capacity_by_state = function(ei_df, eia_df, state_name) {
   
   # ---- EI: split available vs unavailable ----
-  ei_clean <- map_technology(ei_df, "EI")
+  ei_clean = map_technology(ei_df, "EI")
   
-  ei_available <- ei_clean %>%
+  ei_available = ei_clean %>%
     filter(available == TRUE)
   
-  ei_unavailable <- ei_clean %>%
+  ei_unavailable = ei_clean %>%
     filter(available == FALSE)
   
   # ---- Aggregate EI ----
-  ei_summary_available <- ei_available %>%
+  ei_summary_available = ei_available %>%
     group_by(tech_group) %>%
     summarise(EI_available_capacity = sum(rating, na.rm = TRUE), .groups = "drop")
   
-  ei_summary_total <- ei_clean %>%
+  ei_summary_total = ei_clean %>%
     group_by(tech_group) %>%
     summarise(EI_total_capacity = sum(rating, na.rm = TRUE), .groups = "drop")
   
   # ---- EIA ----
-  eia_clean <- map_technology(eia_df, "EIA")
+  eia_clean = map_technology(eia_df, "EIA")
   
-  eia_summary <- eia_clean %>%
+  eia_summary = eia_clean %>%
     group_by(tech_group) %>%
     summarise(EIA_capacity = sum(nameplate_capacity, na.rm = TRUE), .groups = "drop")
   
   # ---- Merge ----
-  summary <- full_join(ei_summary_available, eia_summary, by = "tech_group") %>%
+  summary = full_join(ei_summary_available, eia_summary, by = "tech_group") %>%
     full_join(ei_summary_total, by = "tech_group") %>%
     mutate(
       state = state_name,
@@ -274,13 +451,192 @@ summarize_capacity_by_state <- function(ei_df, eia_df, state_name) {
 }
 ```
 
+```{r}
+va_summary = summarize_capacity_by_state(VA_ei_gens, eia_va, "VA")
+md_summary = summarize_capacity_by_state(MD_ei_gens, eia_md, "MD")
+wv_summary = summarize_capacity_by_state(WV_ei_gens, eia_wv, "WV")
+all_states_summary = bind_rows(va_summary, md_summary, wv_summary)
+```
+
+```{r}
+plot_thermal_discrepancy <- function(ei_df, eia_df, state_name, available_only = TRUE) {
+  
+  # -------------------------
+  # EI Thermal (EXCLUDE NUCLEAR)
+  # -------------------------
+  ei_thermal <- ei_df %>%
+    filter(prime_mover_type %in% c("ST", "CT", "CC", "OT")) %>%
+    filter(fuel != "NUCLEAR") %>%   # <-- key fix
+    { if (available_only) filter(., available == TRUE) else . } %>%
+    group_by(fuel) %>%
+    summarise(EI_capacity = sum(rating, na.rm = TRUE), .groups = "drop")
+  
+  # -------------------------
+  # EIA Thermal
+  # -------------------------
+  eia_thermal <- eia_df %>%
+    filter(Technology %in% c(
+      "Conventional Steam Coal",
+      "Natural Gas Fired Combined Cycle",
+      "Natural Gas Steam Turbine",
+      "Natural Gas Fired Combustion Turbine",
+      "Natural Gas Internal Combustion Engine",
+      "Petroleum Liquids",
+      "Petroleum Coke",
+      "Other Gases"
+    )) %>%
+    mutate(fuel = case_when(
+      Technology == "Conventional Steam Coal" ~ "COAL",
+      
+      Technology %in% c(
+        "Natural Gas Fired Combined Cycle",
+        "Natural Gas Steam Turbine",
+        "Natural Gas Fired Combustion Turbine",
+        "Natural Gas Internal Combustion Engine",
+        "Other Gases"
+      ) ~ "NATURAL_GAS",
+      
+      Technology %in% c(
+        "Petroleum Liquids",
+        "Petroleum Coke"
+      ) ~ "DISTILLATE_FUEL_OIL",
+      
+      TRUE ~ "OTHER"
+    )) %>%
+    group_by(fuel) %>%
+    summarise(EIA_capacity = sum(nameplate_capacity, na.rm = TRUE), .groups = "drop")
+  
+  # -------------------------
+  # Combine
+  # -------------------------
+  thermal_compare <- full_join(ei_thermal, eia_thermal, by = "fuel") %>%
+    replace_na(list(EI_capacity = 0, EIA_capacity = 0)) %>%
+    pivot_longer(cols = c(EI_capacity, EIA_capacity),
+                 names_to = "source",
+                 values_to = "capacity")
+  
+  # -------------------------
+  # Plot
+  # -------------------------
+  ggplot(thermal_compare, aes(x = fuel, y = capacity, fill = source)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    theme_minimal() +
+    labs(
+      title = paste(state_name, "- Thermal Capacity by Fuel (EI (Available) vs EIA)"),
+      x = "Fuel Type",
+      y = "Capacity (MW)",
+      fill = "Source"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 9)
+    ) +
+    scale_fill_manual(values = c(
+      "EI_capacity" = "#FF7F73",
+      "EIA_capacity" = "#00C4CC"
+    ))
+}
+
+
+```
+
+```{r}
+plot_thermal_3bars <- function(ei_df, eia_df, state_name) {
+  
+  # -------------------------
+  # EI Thermal
+  # -------------------------
+  ei_thermal <- ei_df %>%
+    filter(prime_mover_type %in% c("ST", "CT", "CC", "OT")) %>%
+    filter(fuel != "NUCLEAR") %>%
+    group_by(fuel) %>%
+    summarise(
+      EI_available_capacity = sum(rating[available == TRUE], na.rm = TRUE),
+      EI_total_capacity     = sum(rating, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # -------------------------
+  # EIA Thermal
+  # -------------------------
+  eia_thermal <- eia_df %>%
+    filter(Technology %in% c(
+      "Conventional Steam Coal",
+      "Natural Gas Fired Combined Cycle",
+      "Natural Gas Steam Turbine",
+      "Natural Gas Fired Combustion Turbine",
+      "Natural Gas Internal Combustion Engine",
+      "Petroleum Liquids",
+      "Petroleum Coke",
+      "Other Gases"
+    )) %>%
+    mutate(fuel = case_when(
+      Technology == "Conventional Steam Coal" ~ "COAL",
+      
+      Technology %in% c(
+        "Natural Gas Fired Combined Cycle",
+        "Natural Gas Steam Turbine",
+        "Natural Gas Fired Combustion Turbine",
+        "Natural Gas Internal Combustion Engine",
+        "Other Gases"
+      ) ~ "NATURAL_GAS",
+      
+      Technology %in% c(
+        "Petroleum Liquids",
+        "Petroleum Coke"
+      ) ~ "DISTILLATE_FUEL_OIL",
+      
+      TRUE ~ "OTHER"
+    )) %>%
+    group_by(fuel) %>%
+    summarise(
+      EIA_capacity = sum(nameplate_capacity, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # -------------------------
+  # Combine
+  # -------------------------
+  thermal_compare <- full_join(ei_thermal, eia_thermal, by = "fuel") %>%
+    replace_na(list(
+      EI_available_capacity = 0,
+      EI_total_capacity = 0,
+      EIA_capacity = 0
+    )) %>%
+    pivot_longer(
+      cols = c(EI_available_capacity, EI_total_capacity, EIA_capacity),
+      names_to = "source",
+      values_to = "capacity"
+    )
+  
+  # -------------------------
+  # Plot
+  # -------------------------
+  ggplot(thermal_compare, aes(x = fuel, y = capacity, fill = source)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    theme_minimal() +
+    labs(
+      title = paste(state_name, "- Thermal Capacity (EI Available vs Total vs EIA)"),
+      x = "Fuel Type",
+      y = "Capacity (MW)",
+      fill = "Source"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 9)
+    ) +
+    scale_fill_manual(values = c(
+      "EI_available_capacity" = "#FF7F73",   # coral
+      "EI_total_capacity"     = "#FFA07A",   # lighter coral
+      "EIA_capacity"          = "#00C4CC"    # teal
+    ))
+}
+```
+
+
 
 ### VA 
 
 ```{r run-summary}
-va_summary <- summarize_capacity_by_state(VA_ei_gens, eia_va, "VA")
-md_summary <- summarize_capacity_by_state(MD_ei_gens, eia_md, "MD")
-all_states_summary <- bind_rows(va_summary, md_summary)
+
 va_summary %>%
   arrange(state, tech_group) %>%
   dplyr::select(
@@ -293,7 +649,7 @@ va_summary %>%
   ) %>%
   kable(digits = 1, caption = "VA Capacity Comparison (Available vs Total EI)")
 
-va_plot_df <- va_summary %>%
+va_plot_df = va_summary %>%
   select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
   pivot_longer(
     cols = c(EI_available_capacity, EIA_capacity),
@@ -311,6 +667,14 @@ ggplot(va_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
   )
 ```
 
+```{r}
+plot_thermal_discrepancy(VA_ei_gens, eia_va, "Virginia")
+```
+
+
+```{r}
+plot_thermal_3bars(VA_ei_gens, eia_va, "VA")
+```
 
 ### MD 
 ```{r }
@@ -325,7 +689,7 @@ md_summary %>%
     pct_diff_total
   ) %>%
   kable(digits = 1, caption = "MD Capacity Comparison (Available vs Total EI)")
-md_plot_df <- md_summary %>%
+md_plot_df = md_summary %>%
   select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
   pivot_longer(
     cols = c(EI_available_capacity, EIA_capacity),
@@ -345,13 +709,148 @@ ggplot(md_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
 
 ```
 
+```{r}
+plot_thermal_discrepancy(MD_ei_gens, eia_md, "Maryland")
+```
+
+```{r}
+plot_thermal_3bars(MD_ei_gens, eia_md, "MD")
+```
+
+
+### WV 
+```{r }
+wv_summary %>%
+  arrange(state, tech_group) %>%
+  dplyr::select(
+    state, tech_group,
+    EI_available_capacity,
+    EIA_capacity,
+    pct_diff_available,
+    EI_total_capacity,
+    pct_diff_total
+  ) %>%
+  kable(digits = 1, caption = "WV Capacity Comparison (Available vs Total EI)")
+wv_plot_df = wv_summary %>%
+  select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
+  pivot_longer(
+    cols = c(EI_available_capacity, EIA_capacity),
+    names_to = "source",
+    values_to = "capacity"
+  )
+
+ggplot(wv_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Installed Capacity Comparison (WV)",
+    y = "MW",
+    x = "Technology",
+    fill = "Source"
+  )
+
+```
+
+```{r}
+plot_thermal_discrepancy(WV_ei_gens, eia_wv, "West Virginia")
+```
+
+```{r}
+plot_thermal_3bars(WV_ei_gens, eia_wv, "WV")
+```
+
 ---
 
 # EI and EIA comparison
 
+3 sets:
+
+- ✅ Matched (EI ∩ EIA) → update capacity if needed
+
+- ➕ EIA only (EIA − EI) → ADD to EI
+
+- ➖ EI only (EI − EIA) → set unavailable
+
 ```{r}
-library(dplyr)
-library(readr)
+eia_plants = read_xlsx("2___Plant_Y2024.xlsx", skip = 1)
+```
+
+
+```{r}
+add_eia_coordinates <- function(eia_df, eia_plants_df, state_name = NULL) {
+  
+  # ── 0. Standardize join key types ────────────────────────────────────────
+  eia_df <- eia_df %>% 
+    mutate(`Plant Code` = str_trim(as.character(`Plant Code`)))
+  
+  plants_clean <- eia_plants_df %>%
+    mutate(`Plant Code` = str_trim(as.character(`Plant Code`))) %>%
+    select(
+    `Plant Code`,
+    plant_name_ref = `Plant Name`,
+    lat = Latitude,
+    lon = Longitude
+  )
+  
+  # ── 1. Join ──────────────────────────────────────────────────────────────
+  merged_df <- eia_df %>% 
+    left_join(plants_clean, by = "Plant Code")
+
+      # See if any rows actually joined
+      sum(!is.na(merged_df$plant_name_ref))
+  
+  # ── 2. Validation: Plant Name check ──────────────────────────────────────
+  name_check <- merged_df %>%
+    filter(!is.na(`Plant Name`) & !is.na(plant_name_ref)) %>%
+    mutate(name_match = str_trim(tolower(`Plant Name`)) == 
+                         str_trim(tolower(plant_name_ref)))
+  
+  mismatches <- name_check %>% filter(!name_match)
+  
+  if (nrow(mismatches) > 0) {
+    warning(
+      paste0(
+        "⚠️ Plant Name mismatches",
+        if (!is.null(state_name)) paste0(" (", state_name, ")"),
+        ": ", nrow(mismatches), " rows\n",
+        paste(head(
+          paste0(mismatches$`Plant Name`, " ≠ ", mismatches$plant_name_ref),
+          5
+        ), collapse = "\n")
+      )
+    )
+  }
+  
+  # ── 3. Missing coordinates check ─────────────────────────────────────────
+  missing_coords <- merged_df %>%
+    filter(is.na(lat) | is.na(lon))
+  
+  if (nrow(missing_coords) > 0) {
+    warning(
+      paste0(
+        "⚠️ Missing coordinates",
+        if (!is.null(state_name)) paste0(" (", state_name, ")"),
+        ": ", nrow(missing_coords), " rows"
+      )
+    )
+  }
+  
+  return(merged_df)
+}
+```
+
+Add coordinates from the EIA plants file
+
+```{r}
+eia_va <- add_eia_coordinates(eia_va, eia_plants, "VA")
+eia_md <- add_eia_coordinates(eia_md, eia_plants, "MD")
+eia_wv <- add_eia_coordinates(eia_wv, eia_plants, "WV")
+```
+
+
+
+```{r}
+
 
 
 #' Group generators by geographic location and aggregate their capacities
@@ -391,33 +890,39 @@ compare_generator_fleets = function(ei_gens, eia_gens, coord_tolerance = 0.2) {
   cat("\nGrouping generators by location...\n")
   
   # Group EI generators
+  
   ei_grouped = ei_gens %>%
     group_by(Lat, Lon) %>%
     summarise(
-        GenNames         = paste(GenName, collapse = "; "),
-        BusNumbers       = paste(BusNumber, collapse = "; "),
-        BusNames         = paste(BusName, collapse = "; "),
-        n_ei_generators  = n(),
-        Rating           = sum(Rating),
-        Available        = all(Available),
-        Type             = first(Type),
-        .groups          = 'drop'
-    )
+      GenNames         = paste(GenName, collapse = "; "),
+      EI_plant_names = {
+  vals <- unique(na.omit(plant_name))
+  if (length(vals) == 0) NA_character_ else paste(vals, collapse = "; ")
+},  # 👈 ADD THIS
+      BusNumbers       = paste(BusNumber, collapse = "; "),
+      BusNames         = paste(BusName, collapse = "; "),
+      n_ei_generators  = n(),
+      Rating           = sum(Rating),
+      Available        = all(Available),
+      Type             = first(Type),
+      .groups          = 'drop'
+  )
   
   cat("  EI:", nrow(ei_gens), "generators →", nrow(ei_grouped), "unique locations\n")
   
   # Group EIA generators
+  # Group EIA generators
   eia_grouped = eia_gens %>%
-    group_by(lat, lon) %>%
-    summarise(
-      plant_names = paste(plant, collapse = "; "),
-      generator_ids = paste(`generator ID`, collapse = "; "),
-      n_eia_generators = n(),
-      nameplate_capacity = sum(nameplate_capacity),
-      technology = first(technology),
-      ba = first(ba),
-      .groups = 'drop'
-    )
+  group_by(lat, lon) %>%
+  summarise(
+    plant_names = paste(`Plant Name`, collapse = "; "),  # EIA plant names
+    plant_codes = paste(`Plant Code`, collapse = "; "),  # EIA plant codes
+    generator_ids = paste(`Generator ID`, collapse = "; "),
+    n_eia_generators = n(),
+    nameplate_capacity = sum(nameplate_capacity, na.rm = TRUE),
+    technology = first(Technology),
+    .groups = 'drop'
+  )
   
   cat("  EIA:", nrow(eia_gens), "generators →", nrow(eia_grouped), "unique locations\n")
   
@@ -470,8 +975,12 @@ compare_generator_fleets = function(ei_gens, eia_gens, coord_tolerance = 0.2) {
     
     # Rename for clarity
     in_both_grouped = in_both_grouped %>%
-      rename(ei_lat = Lat, ei_lon = Lon)
-  }
+    rename(
+      ei_lat = Lat,
+      ei_lon = Lon,
+      ei_plant_names = EI_plant_names
+    )
+}
   
   # Step 4: Create detailed view (expand to individual generators)
   in_both_detailed = data.frame()
@@ -495,6 +1004,8 @@ compare_generator_fleets = function(ei_gens, eia_gens, coord_tolerance = 0.2) {
       ei_at_location$eia_lon = row$eia_lon
       ei_at_location$capacity_diff = row$capacity_diff
       ei_at_location$capacity_abs_diff = row$capacity_abs_diff
+      ei_at_location$ei_plant_names = row$ei_plant_names
+      
       
       # Rename lat/lon
       ei_at_location = ei_at_location %>%
@@ -516,7 +1027,14 @@ compare_generator_fleets = function(ei_gens, eia_gens, coord_tolerance = 0.2) {
   total_ei_capacity = sum(ei_gens$Rating, na.rm = TRUE)
   total_eia_capacity = sum(eia_gens$nameplate_capacity, na.rm = TRUE)
   matched_ei_capacity = if(nrow(in_both_grouped) > 0) sum(in_both_grouped$Rating, na.rm = TRUE) else 0
-  matched_eia_capacity = if(nrow(in_both_grouped) > 0) sum(in_both_grouped$eia_capacity, na.rm = TRUE) else 0
+  matched_eia_capacity = if(nrow(in_both_grouped) > 0) 
+                        {
+                        unique_eia_idx = unique(in_both_grouped$eia_match_idx)
+                        matched_eia_capacity = sum(eia_grouped$nameplate_capacity[unique_eia_idx], na.rm = TRUE)
+                        } 
+                        else {
+                        matched_eia_capacity = 0
+                        }
   mean_capacity_diff = if(nrow(in_both_grouped) > 0) mean(in_both_grouped$capacity_diff, na.rm = TRUE) else 0
   mean_capacity_abs_diff = if(nrow(in_both_grouped) > 0) mean(in_both_grouped$capacity_abs_diff, na.rm = TRUE) else 0
   
@@ -573,27 +1091,24 @@ compare_generator_fleets = function(ei_gens, eia_gens, coord_tolerance = 0.2) {
 #' @param type character: "Solar", "Wind", "Hydro", "Thermal", "Storage"
 #' @param coord_tolerance numeric: tolerance in degrees (default 0.2)
 compare_by_type = function(ei_gens, eia_gens, type = "Solar", coord_tolerance = 0.2,
-                           eia_type_col = "technology") {
+                           eia_type_col = "Technology") {
   
   # ── 1. Type → filter mappings ──────────────────────────────────────────────
   ei_type_map = list(
   "Solar"   = c("Solar"),
   "Wind"    = c("Wind"),
   "Hydro"   = c("Hydro"),
+  "Pumped Storage" = c("Pumped Storage"),   # 👈 ADD THIS
   "Thermal" = c("ThermalStandard", "ThermalMultiStart"),
-  "Nuclear" = c("ThermalStandard"),   # 👈 special handling
+  "Nuclear" = c("ThermalStandard"),
   "Storage" = c("Storage")
 )
-  
-  if (type == "Nuclear") {
-  ei_filtered = ei_gens %>%
-    filter(generator_type == "ThermalStandard", fuel == "NUCLEAR")
-}
-  
-  eia_type_map = list(
+
+eia_type_map = list(
   "Solar"   = c("Solar Photovoltaic"),
   "Wind"    = c("Onshore Wind Turbine", "Offshore Wind Turbine"),
-  "Hydro"   = c("Conventional Hydroelectric", "Run-of-River Hydroelectric", "Hydro"),
+  "Hydro"   = c("Conventional Hydroelectric", "Run-of-River Hydroelectric"),
+  "Pumped Storage" = c("Hydroelectric Pumped Storage"),  # 👈 ADD THIS
   "Thermal" = c("Natural Gas Steam Turbine", "Natural Gas Fired Combined Cycle",
                 "Natural Gas Fired Combustion Turbine", "Coal Steam Turbine"),
   "Nuclear" = c("Nuclear"),
@@ -616,7 +1131,8 @@ compare_by_type = function(ei_gens, eia_gens, type = "Solar", coord_tolerance = 
     stop(paste("EIA type column", eia_type_col, "not found in EIA dataset"))
   }
   
-  eia_filtered = eia_gens %>% filter(.data[[eia_type_col]] %in% eia_type_map[[type]])
+  # eia_filtered = eia_gens %>% filter(.data[[eia_type_col]] %in% eia_type_map[[type]])
+  eia_filtered = eia_gens %>% filter(tech_group == type)
   
   cat("=== Type:", type, "===\n")
   cat("EI generators:  ", nrow(ei_filtered), "\n")
@@ -651,90 +1167,1303 @@ compare_by_type = function(ei_gens, eia_gens, type = "Solar", coord_tolerance = 
 }
 ```
 
+```{r}
+clean_name <- function(x) {
+  x %>%
+    tolower() %>%
+    stringr::str_replace_all("[^a-z0-9 ]", " ") %>%  # remove symbols like _
+    stringr::str_squish()
+}
+
+
+
+compute_name_similarity <- function(eia_name, bus_name) {
+  eia_clean <- clean_name(eia_name)
+  bus_clean <- clean_name(bus_name)
+  
+  # Jaro-Winkler similarity (0 to 1, higher = better)
+  jw <- stringsim(eia_clean, bus_clean, method = "jw")
+  
+  # Check if any word overlaps
+  eia_words <- unlist(strsplit(eia_clean, " "))
+  bus_words <- unlist(strsplit(bus_clean, " "))
+  
+  word_overlap <- length(intersect(eia_words, bus_words)) / length(unique(eia_words))
+  
+  return(list(
+    jw_similarity = jw,
+    word_overlap = word_overlap
+  ))
+}
+
+
+
+get_best_similarity <- function(eia_names, bus_names) {
+  
+  eia_list <- strsplit(eia_names, ";\\s*")[[1]]
+  bus_list <- strsplit(bus_names, ";\\s*")[[1]]
+  
+  scores <- expand.grid(eia = eia_list, bus = bus_list, stringsAsFactors = FALSE) %>%
+    rowwise() %>%
+    mutate(
+      sim = list(compute_name_similarity(eia, bus)),
+      jw = sim$jw_similarity,
+      overlap = sim$word_overlap
+    ) %>%
+    ungroup()
+  
+  # Take best match
+  best <- scores %>%
+    arrange(desc(jw), desc(overlap)) %>%
+    slice(1)
+  
+  return(best[, c("jw", "overlap")])
+}
+```
+
+
 ## VA
+
+```{r}
+compare_nonthermal <- function(ei_df, eia_df, type_name, available_only = TRUE, prime_mover_filter = NULL) {
+  # -------------------------
+  # Filter EI
+  # -------------------------
+  ei_filtered <- ei_df
+  if (!is.null(prime_mover_filter)) {
+    ei_filtered <- ei_filtered %>% filter(prime_mover_type %in% prime_mover_filter)
+  }
+  if (available_only) {
+    ei_filtered <- ei_filtered %>% filter(available == TRUE)
+  }
+
+  # Filter EIA
+  eia_filtered <- eia_df %>% filter(tech_group == type_name)
+  if (!is.null(prime_mover_filter) && type_name == "Hydro") {
+    # special mapping for Pumped Storage
+    eia_filtered <- eia_filtered %>% mutate(tech_group = "Hydro")
+  }
+
+  # -------------------------
+  # Compare
+  # -------------------------
+  results <- compare_by_type(ei_filtered, eia_filtered, type = type_name, coord_tolerance = 0.5)
+
+  # -------------------------
+  # Handle empty results
+  # -------------------------
+  if (is.null(results$in_both_grouped) || nrow(results$in_both_grouped) == 0) {
+    warning(paste("No matched generators for type:", type_name))
+    summary_results <- tibble()
+  } else {
+    summary_results <- results$in_both_grouped %>%
+      rowwise() %>%
+      mutate(
+        sim = list(get_best_similarity(eia_plant_names, BusNames)),
+        name_similarity = sim$jw,
+        word_overlap = sim$overlap
+      ) %>%
+      ungroup() %>%
+      mutate(
+        eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+        bus_names_short = stringr::str_trunc(BusNames, width = 40)
+      ) %>%
+      dplyr::select(
+        ei_plant_names,
+        eia_plant_names_short,
+        bus_names_short,
+        capacity_abs_pct_diff,
+        name_similarity,
+        capacity_diff,
+        Rating,
+        eia_capacity,
+        n_ei_generators,
+        n_eia_generators,
+        GenNames,
+        capacity_abs_diff,
+        capacity_pct_diff,
+        ei_lat, eia_lat, ei_lon, eia_lon
+      ) %>%
+      dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity))
+  }
+
+  return(list(results = results, summary = summary_results))
+}
+```
+
+
 
 ### Solar
 
+#### All EI
+
+
 ```{r}
-solar_results = compare_by_type(VA_ei_gens, eia_va_renew, type = "Solar", coord_tolerance = 0.2)
+solar_va_all <- compare_nonthermal(VA_ei_gens, eia_va, "Solar", available_only = FALSE)
+solar_va_all$summary
+```
 
-
-# Access results
-solar_results$in_both_grouped%>%
-  dplyr::select(n_eia_generators, eia_plant_names, n_ei_generators, BusNames,
-                Rating, eia_capacity, 
-                capacity_diff, capacity_abs_diff,
-                capacity_pct_diff, capacity_abs_pct_diff,   
-                ei_lat, eia_lat, ei_lon, eia_lon) %>%
-  dplyr::arrange((capacity_abs_pct_diff))
+#### EI available only
+```{r}
+solar_va_avail <- compare_nonthermal(VA_ei_gens, eia_va, "Solar", available_only = TRUE)
+solar_va_avail$summary
 ```
 
 ### Wind
 
-```{r}
-wind_results  = compare_by_type(VA_ei_gens, eia_va_renew, type = "Wind", coord_tolerance = 0.2)
+#### AL EI
 
-# wind_results$in_both_grouped %>%
-#   dplyr::select(n_eia_generators, eia_plant_names, n_ei_generators, BusNames,
-#                 Rating, eia_capacity, 
-#                 capacity_diff, capacity_abs_diff,
-#                 capacity_pct_diff, capacity_abs_pct_diff,   
-#                 ei_lat, eia_lat, ei_lon, eia_lon) %>%
-#   dplyr::arrange(desc(capacity_abs_pct_diff))
+#### All EI
+
+
+```{r}
+wind_va_all <- compare_nonthermal(VA_ei_gens, eia_va, "Wind", available_only = FALSE)
+wind_va_all$summary
 ```
+
+#### EI available only
+```{r}
+wind_va_avail <- compare_nonthermal(VA_ei_gens, eia_va, "Wind", available_only = TRUE)
+wind_va_avail$summary
+```
+
 
 ### Hydro
 
+#### EI all
+
+```{r}
+hydro_va_all <- compare_nonthermal(VA_ei_gens, eia_va, "Hydro", available_only = FALSE, prime_mover_filter = "HY")
+hydro_va_all$summary
+# eia_va_hydro = eia_va %>% filter(tech_group == "Hydro")
+# #eia_va_hydro_tech = eia_va_hydro %>% mutate(technology = "Hydro")
+# hydro_results = compare_by_type(VA_ei_gens[VA_ei_gens$prime_mover_type == "HY",], eia_va_hydro, type = "Hydro", coord_tolerance = 0.5)
+# 
+# hydro_results$in_both_grouped <- hydro_results$in_both_grouped %>%
+#   rowwise() %>%
+#   mutate(
+#     sim = list(get_best_similarity(eia_plant_names, BusNames)),
+#     name_similarity = sim$jw,
+#     word_overlap = sim$overlap
+#   ) %>%
+#   ungroup()
+# 
+# # Check for matches
+# if (!is.null(hydro_results) && !is.null(hydro_results$in_both_grouped)) {
+#   hydro_results$in_both_grouped %>%
+#     mutate(
+#     eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+#     bus_names_short = stringr::str_trunc(BusNames, width = 40),
+#   ) %>%
+#   dplyr::select(
+#     ei_plant_names,
+#     eia_plant_names_short,
+#     bus_names_short,
+#     capacity_abs_pct_diff,
+#     name_similarity,         # 👈 similarity score (Jaro-Winkler)
+#     capacity_diff,
+#     Rating,
+#     eia_capacity,
+#     n_ei_generators,
+#     n_eia_generators,
+#     GenNames,                # 👈 EI generator names
+#     capacity_abs_diff,
+#     capacity_pct_diff,
+#     ei_lat, eia_lat, ei_lon, eia_lon
+#   ) %>%
+#   dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+# } else {
+#   cat("No matched Hydro generators found.\n")
+# }
+```
+
+#### EI available only
+
+
+```{r}
+hydro_va_available <- compare_nonthermal(VA_ei_gens, eia_va, "Hydro", available_only = TRUE, prime_mover_filter = "HY")
+hydro_va_available$summary
+
+# eia_va_hydro = eia_va %>% filter(tech_group == "Hydro")
+# #eia_va_hydro_tech = eia_va_hydro %>% mutate(technology = "Hydro")
+# hydro_results = compare_by_type(VA_ei_gens[(VA_ei_gens$prime_mover_type == "HY" & VA_ei_gens$available==TRUE),], eia_va_hydro, type = "Hydro", coord_tolerance = 0.5)
+# 
+# hydro_results$in_both_grouped <- hydro_results$in_both_grouped %>%
+#   rowwise() %>%
+#   mutate(
+#     sim = list(get_best_similarity(eia_plant_names, BusNames)),
+#     name_similarity = sim$jw,
+#     word_overlap = sim$overlap
+#   ) %>%
+#   ungroup()
+# 
+# # Check for matches
+# if (!is.null(hydro_results) && !is.null(hydro_results$in_both_grouped)) {
+#   hydro_results$in_both_grouped %>%
+#     mutate(
+#     eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+#     bus_names_short = stringr::str_trunc(BusNames, width = 40),
+#   ) %>%
+#   dplyr::select(
+#     ei_plant_names,
+#     eia_plant_names_short,
+#     bus_names_short,
+#     capacity_abs_pct_diff,
+#     name_similarity,         # 👈 similarity score (Jaro-Winkler)
+#     capacity_diff,
+#     Rating,
+#     eia_capacity,
+#     n_ei_generators,
+#     n_eia_generators,
+#     GenNames,                # 👈 EI generator names
+#     capacity_abs_diff,
+#     capacity_pct_diff,
+#     ei_lat, eia_lat, ei_lon, eia_lon
+#   ) %>%
+#   dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+# } else {
+#   cat("No matched Hydro generators found.\n")
+# }
+```
+
+### Pumped Storage
+
+#### EI all
+
 ```{r}
 
-eia_va_hydro_tech <- eia_va_hydro %>%
-  mutate(technology = "Hydro")
-hydro_results = compare_by_type(VA_ei_gens, eia_va_hydro_tech, type = "Hydro", coord_tolerance = 0.2)
+# Pumped Storage comparison
+ei_va_ps <- VA_ei_gens %>% filter(prime_mover_type == "PS") %>%
+  mutate(generator_type = "Hydro")  # temporarily trick type mapping
+
+eia_va_ps <- eia_va %>% filter(tech_group == "Pumped Storage") %>%
+  mutate(tech_group = "Hydro")      # temporarily trick type mapping
+
+ps_results <- compare_by_type(
+  ei_va_ps,
+  eia_va_ps,
+  type = "Hydro",         # keep Hydro to match your function
+  coord_tolerance = 0.5
+)
+
+
+ps_results$in_both_grouped <- ps_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
 
 # Check for matches
-if (!is.null(hydro_results) && !is.null(hydro_results$in_both_grouped)) {
-  hydro_results$in_both_grouped %>%
-    dplyr::select(
-      n_eia_generators, eia_plant_names, 
-      n_ei_generators, BusNames,
-      Rating, eia_capacity, 
-      capacity_diff, capacity_abs_diff,
-      capacity_pct_diff, capacity_abs_pct_diff,   
-      ei_lat, eia_lat, ei_lon, eia_lon
-    ) %>%
-    dplyr::arrange((capacity_abs_pct_diff))
+if (!is.null(ps_results) && !is.null(ps_results$in_both_grouped)) {
+  ps_results$in_both_grouped %>%
+    mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
 } else {
-  cat("No matched Hydro generators found.\n")
+  cat("No matched Pumped Storage generators found.\n")
 }
 ```
 
-### Thermal
+#### EI available only
 
 ```{r}
-# eia_va_thermal_tech <- eia_va_thermal %>%
-#   mutate(technology = "Thermal")
-# thermal_results = compare_by_type(
-#   VA_ei_gens,
-#   eia_va_thermal_tech,
-#   type = "Thermal",
-#   coord_tolerance = 0.2,
-#   eia_type_col = "technology",
-#   eia_type_values = c(
-#     "Natural Gas Steam Turbine",
-#     "Natural Gas Fired Combined Cycle",
-#     "Natural Gas Fired Combustion Turbine",
-#     "Coal Steam Turbine"
-#   )
-# )
-# 
-# thermal_results$in_both_grouped %>%
-#   dplyr::select(
-#     n_eia_generators, eia_plant_names, n_ei_generators, BusNames,
-#     Rating, eia_capacity, 
-#     capacity_diff, capacity_abs_diff,
-#     capacity_pct_diff, capacity_abs_pct_diff,   
-#     ei_lat, eia_lat, ei_lon, eia_lon
-#   ) %>%
-#   dplyr::arrange((capacity_abs_pct_diff))
+
+# Pumped Storage comparison
+ei_va_ps <- VA_ei_gens %>% filter(prime_mover_type == "PS", available==TRUE) %>%
+  mutate(generator_type = "Hydro")  # temporarily trick type mapping
+
+eia_va_ps <- eia_va %>% filter(tech_group == "Pumped Storage") %>%
+  mutate(tech_group = "Hydro")      # temporarily trick type mapping
+
+ps_results <- compare_by_type(
+  ei_va_ps,
+  eia_va_ps,
+  type = "Hydro",         # keep Hydro to match your function
+  coord_tolerance = 0.5
+)
+
+
+ps_results$in_both_grouped <- ps_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
+
+# Check for matches
+if (!is.null(ps_results) && !is.null(ps_results$in_both_grouped)) {
+  ps_results$in_both_grouped %>%
+    mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+} else {
+  cat("No matched Pumped Storage generators found.\n")
+}
 ```
+
+
+
+### Thermal
+
+#### EI all
+
+```{r}
+# Map technology for EI and EIA
+ei_va_mapped  <- map_technology(VA_ei_gens, "EI")
+eia_va_mapped <- map_technology(eia_va, "EIA")
+
+# Filter EI available if needed
+ei_va_thermal <- ei_va_mapped %>% filter(tech_group == "Thermal")
+ei_va_thermal_available <- ei_va_mapped %>% filter(tech_group == "Thermal", available == TRUE)
+
+# Filter EIA thermal
+eia_va_thermal <- eia_va_mapped %>% filter(tech_group == "Thermal")
+
+
+
+# Compare all thermal
+thermal_results <- compare_by_type(
+  ei_va_thermal,
+  eia_va_thermal,
+  type = "Thermal",
+  coord_tolerance = 0.5
+)
+
+thermal_results$in_both_grouped <- thermal_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
+
+thermal_results$in_both_grouped %>%
+  mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+
+
+```
+
+#### EI available only
+
+```{r}
+
+# Compare available only
+thermal_results <- compare_by_type(
+  ei_va_thermal_available,
+  eia_va_thermal,
+  type = "Thermal",
+  coord_tolerance = 0.5
+)
+
+thermal_results$in_both_grouped <- thermal_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
+
+thermal_results$in_both_grouped %>%
+  mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+
+
+```
+
+### Thermal by fuel
+
+```{r}
+compare_thermal_by_fuel <- function(ei_df, eia_df, fuel_type, available_only = TRUE) {
+  # -------------------------
+  # Filter EI
+  # -------------------------
+  ei_filtered <- ei_df %>%
+    filter(fuel == fuel_type) %>%
+    { if (available_only) filter(., available == TRUE) else . }
+
+  # -------------------------
+  # Filter EIA
+  # -------------------------
+  eia_filtered <- switch(fuel_type,
+    "NATURAL_GAS" = eia_df %>% filter(Technology %in% c(
+      "Natural Gas Steam Turbine",
+      "Natural Gas Fired Combined Cycle",
+      "Natural Gas Fired Combustion Turbine",
+      "Natural Gas Internal Combustion Engine",
+      "Other Gases"
+    )),
+    "COAL" = eia_df %>% filter(Technology == "Conventional Steam Coal"),
+    "DISTILLATE_FUEL_OIL" = eia_df %>% filter(Technology %in% c("Petroleum Liquids", "Petroleum Coke")),
+    # default: all others
+    eia_df %>% filter(!Technology %in% c(
+      "Conventional Steam Coal",
+      "Natural Gas Steam Turbine",
+      "Natural Gas Fired Combined Cycle",
+      "Natural Gas Fired Combustion Turbine",
+      "Natural Gas Internal Combustion Engine",
+      "Petroleum Liquids",
+      "Petroleum Coke"
+    ))
+  )
+
+  # -------------------------
+  # Compare
+  # -------------------------
+  results <- compare_by_type(ei_filtered, eia_filtered, type = "Thermal", coord_tolerance = 0.5)
+
+  # -------------------------
+  # Check for empty results
+  # -------------------------
+  if (is.null(results$in_both_grouped) || nrow(results$in_both_grouped) == 0) {
+    warning(paste("No matched generators for fuel:", fuel_type))
+    summary_results <- tibble()  # return empty tibble
+  } else {
+    summary_results <- results$in_both_grouped %>%
+      rowwise() %>%
+      mutate(
+        sim = list(get_best_similarity(eia_plant_names, BusNames)),
+        name_similarity = sim$jw,
+        word_overlap = sim$overlap
+      ) %>%
+      ungroup() %>%
+      mutate(
+        eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+        bus_names_short = stringr::str_trunc(BusNames, width = 40)
+      ) %>%
+      dplyr::select(
+        ei_plant_names,
+        eia_plant_names_short,
+        bus_names_short,
+        capacity_abs_pct_diff,
+        name_similarity,
+        capacity_diff,
+        Rating,
+        eia_capacity,
+        n_ei_generators,
+        n_eia_generators,
+        GenNames,
+        capacity_abs_diff,
+        capacity_pct_diff,
+        ei_lat, eia_lat, ei_lon, eia_lon
+      ) %>%
+      dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity))
+  }
+
+  return(list(results = results, summary = summary_results))
+}
+```
+
+
+#### Natural Gas
+
+##### EI all
+
+```{r}
+# Natural Gas, all EI
+ng_all <- compare_thermal_by_fuel(ei_va_thermal, eia_va_thermal, "NATURAL_GAS", available_only = FALSE)
+ng_all$summary
+
+```
+
+##### EI available only
+
+```{r}
+# Natural Gas, available only
+ng_avail <- compare_thermal_by_fuel(ei_va_thermal, eia_va_thermal, "NATURAL_GAS", available_only = TRUE)
+ng_avail$summary
+```
+
+#### Coal
+
+##### EI all
+
+```{r}
+# Coal, available only
+coal_all = compare_thermal_by_fuel(ei_va_thermal, eia_va_thermal, "COAL", available_only = FALSE)
+coal_all$summary 
+```
+
+##### EI available
+
+```{r}
+# Coal, available only
+coal_all = compare_thermal_by_fuel(ei_va_thermal, eia_va_thermal, "COAL", available_only = TRUE)
+#coal_all$summary 
+```
+
+#### Distillate Fuel Oil
+
+##### All EI
+
+```{r}
+dist_all <- compare_thermal_by_fuel(ei_va_thermal, eia_va_thermal, "DISTILLATE_FUEL_OIL", available_only = FALSE)
+dist_all$summary 
+```
+
+##### EI available only
+
+```{r}
+dist_all <- compare_thermal_by_fuel(ei_va_thermal, eia_va_thermal, "DISTILLATE_FUEL_OIL", available_only = TRUE)
+dist_all$summary 
+```
+
+## MD
+
+### Solar
+
+#### All EI
+
+
+```{r}
+solar_md_all <- compare_nonthermal(MD_ei_gens, eia_md, "Solar", available_only = FALSE)
+solar_md_all$summary
+```
+
+#### EI available only
+```{r}
+solar_md_avail <- compare_nonthermal(MD_ei_gens, eia_md, "Solar", available_only = TRUE)
+solar_md_avail$summary
+```
+
+### Wind
+
+#### AL EI
+
+#### All EI
+
+
+```{r}
+wind_md_all <- compare_nonthermal(MD_ei_gens, eia_md, "Wind", available_only = FALSE)
+wind_md_all$summary
+```
+
+#### EI available only
+```{r}
+wind_md_avail <- compare_nonthermal(MD_ei_gens, eia_md, "Wind", available_only = TRUE)
+wind_md_avail$summary
+```
+
+
+### Hydro
+
+#### EI all
+
+```{r}
+hydro_md_all <- compare_nonthermal(MD_ei_gens, eia_md, "Hydro", available_only = FALSE, prime_mover_filter = "HY")
+hydro_md_all$summary
+
+```
+
+#### EI available only
+
+
+```{r}
+hydro_md_available <- compare_nonthermal(MD_ei_gens, eia_md, "Hydro", available_only = TRUE, prime_mover_filter = "HY")
+hydro_md_available$summary
+```
+
+### Pumped Storage
+
+#### EI all
+
+```{r}
+
+# Pumped Storage comparison
+ei_md_ps <- MD_ei_gens %>% filter(prime_mover_type == "PS") %>%
+  mutate(generator_type = "Hydro")  # temporarily trick type mapping
+
+eia_md_ps <- eia_md %>% filter(tech_group == "Pumped Storage") %>%
+  mutate(tech_group = "Hydro")      # temporarily trick type mapping
+
+ps_results <- compare_by_type(
+  ei_md_ps,
+  eia_md_ps,
+  type = "Hydro",         # keep Hydro to match your function
+  coord_tolerance = 0.5
+)
+
+
+# ps_results$in_both_grouped <- ps_results$in_both_grouped %>%
+#   rowwise() %>%
+#   mutate(
+#     sim = list(get_best_similarity(eia_plant_names, BusNames)),
+#     name_similarity = sim$jw,
+#     word_overlap = sim$overlap
+#   ) %>%
+#   ungroup()
+
+# Check for matches
+if (!is.null(ps_results) && !is.null(ps_results$in_both_grouped)) {
+  ps_results$in_both_grouped %>%
+    mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+} else {
+  cat("No matched Pumped Storage generators found.\n")
+}
+```
+
+#### EI available only
+
+```{r}
+
+# Pumped Storage comparison
+ei_md_ps <- MD_ei_gens %>% filter(prime_mover_type == "PS", available==TRUE) %>%
+  mutate(generator_type = "Hydro")  # temporarily trick type mapping
+
+eia_md_ps <- eia_md %>% filter(tech_group == "Pumped Storage") %>%
+  mutate(tech_group = "Hydro")      # temporarily trick type mapping
+
+ps_results <- compare_by_type(
+  ei_md_ps,
+  eia_md_ps,
+  type = "Hydro",         # keep Hydro to match your function
+  coord_tolerance = 0.5
+)
+
+
+# ps_results$in_both_grouped <- ps_results$in_both_grouped %>%
+#   rowwise() %>%
+#   mutate(
+#     sim = list(get_best_similarity(eia_plant_names, BusNames)),
+#     name_similarity = sim$jw,
+#     word_overlap = sim$overlap
+#   ) %>%
+#   ungroup()
+
+# Check for matches
+if (!is.null(ps_results) && !is.null(ps_results$in_both_grouped)) {
+  ps_results$in_both_grouped %>%
+    mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+} else {
+  cat("No matched Pumped Storage generators found.\n")
+}
+```
+
+
+
+### Thermal
+
+#### EI all
+
+```{r}
+# Map technology for EI and EIA
+ei_md_mapped  <- map_technology(MD_ei_gens, "EI")
+eia_md_mapped <- map_technology(eia_md, "EIA")
+
+# Filter EI available if needed
+ei_md_thermal <- ei_md_mapped %>% filter(tech_group == "Thermal")
+ei_md_thermal_available <- ei_md_mapped %>% filter(tech_group == "Thermal", available == TRUE)
+
+# Filter EIA thermal
+eia_md_thermal <- eia_md_mapped %>% filter(tech_group == "Thermal")
+
+
+
+# Compare all thermal
+thermal_results <- compare_by_type(
+  ei_md_thermal,
+  eia_md_thermal,
+  type = "Thermal",
+  coord_tolerance = 0.5
+)
+
+thermal_results$in_both_grouped <- thermal_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
+
+thermal_results$in_both_grouped %>%
+  mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+
+
+```
+
+#### EI available only
+
+```{r}
+
+# Compare available only
+thermal_results <- compare_by_type(
+  ei_md_thermal_available,
+  eia_md_thermal,
+  type = "Thermal",
+  coord_tolerance = 0.5
+)
+
+thermal_results$in_both_grouped <- thermal_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
+
+thermal_results$in_both_grouped %>%
+  mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+
+
+```
+
+### Thermal by fuel
+
+
+#### Natural Gas
+
+##### EI all
+
+```{r}
+# Natural Gas, all EI
+ng_all <- compare_thermal_by_fuel(ei_md_thermal, eia_md_thermal, "NATURAL_GAS", available_only = FALSE)
+ng_all$summary
+
+```
+
+##### EI available only
+
+```{r}
+# Natural Gas, available only
+ng_avail <- compare_thermal_by_fuel(ei_md_thermal, eia_md_thermal, "NATURAL_GAS", available_only = TRUE)
+ng_avail$summary
+```
+
+#### Coal
+
+##### EI all
+
+```{r}
+# Coal, available only
+coal_all = compare_thermal_by_fuel(ei_md_thermal, eia_md_thermal, "COAL", available_only = FALSE)
+coal_all$summary 
+```
+
+##### EI available
+
+```{r}
+# Coal, available only
+coal_all = compare_thermal_by_fuel(ei_md_thermal, eia_md_thermal, "COAL", available_only = TRUE)
+#coal_all$summary 
+```
+
+#### Distillate Fuel Oil
+
+##### All EI
+
+```{r}
+dist_all <- compare_thermal_by_fuel(ei_md_thermal, eia_md_thermal, "DISTILLATE_FUEL_OIL", available_only = FALSE)
+dist_all$summary 
+```
+
+##### EI available only
+
+```{r}
+dist_all <- compare_thermal_by_fuel(ei_md_thermal, eia_md_thermal, "DISTILLATE_FUEL_OIL", available_only = TRUE)
+dist_all$summary 
+```
+
+
+## WV
+
+### Solar
+
+#### All EI
+
+
+```{r}
+solar_wv_all <- compare_nonthermal(WV_ei_gens, eia_wv, "Solar", available_only = FALSE)
+solar_wv_all$summary
+```
+
+#### EI available only
+```{r}
+solar_wv_avail <- compare_nonthermal(WV_ei_gens, eia_wv, "Solar", available_only = TRUE)
+solar_wv_avail$summary
+```
+
+### Wind
+
+#### AL EI
+
+#### All EI
+
+
+```{r}
+wind_wv_all <- compare_nonthermal(WV_ei_gens, eia_wv, "Wind", available_only = FALSE)
+wind_wv_all$summary
+```
+
+#### EI available only
+```{r}
+wind_wv_avail <- compare_nonthermal(WV_ei_gens, eia_wv, "Wind", available_only = TRUE)
+wind_wv_avail$summary
+```
+
+
+### Hydro
+
+#### EI all
+
+```{r}
+hydro_wv_all <- compare_nonthermal(WV_ei_gens, eia_wv, "Hydro", available_only = FALSE, prime_mover_filter = "HY")
+hydro_wv_all$summary
+
+```
+
+#### EI available only
+
+
+```{r}
+hydro_wv_available <- compare_nonthermal(WV_ei_gens, eia_wv, "Hydro", available_only = TRUE, prime_mover_filter = "HY")
+hydro_wv_available$summary
+```
+
+### Pumped Storage
+
+#### EI all
+
+```{r}
+
+# Pumped Storage comparison
+ei_wv_ps <- WV_ei_gens %>% filter(prime_mover_type == "PS") %>%
+  mutate(generator_type = "Hydro")  # temporarily trick type mapping
+
+eia_wv_ps <- eia_wv %>% filter(tech_group == "Pumped Storage") %>%
+  mutate(tech_group = "Hydro")      # temporarily trick type mapping
+
+ps_results <- compare_by_type(
+  ei_wv_ps,
+  eia_wv_ps,
+  type = "Hydro",         # keep Hydro to match your function
+  coord_tolerance = 0.5
+)
+
+
+# ps_results$in_both_grouped <- ps_results$in_both_grouped %>%
+#   rowwise() %>%
+#   mutate(
+#     sim = list(get_best_similarity(eia_plant_names, BusNames)),
+#     name_similarity = sim$jw,
+#     word_overlap = sim$overlap
+#   ) %>%
+#   ungroup()
+
+# Check for matches
+if (!is.null(ps_results) && !is.null(ps_results$in_both_grouped)) {
+  ps_results$in_both_grouped %>%
+    mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+} else {
+  cat("No matched Pumped Storage generators found.\n")
+}
+```
+
+#### EI available only
+
+```{r}
+
+# Pumped Storage comparison
+ei_wv_ps <- WV_ei_gens %>% filter(prime_mover_type == "PS", available==TRUE) %>%
+  mutate(generator_type = "Hydro")  # temporarily trick type mapping
+
+eia_wv_ps <- eia_wv %>% filter(tech_group == "Pumped Storage") %>%
+  mutate(tech_group = "Hydro")      # temporarily trick type mapping
+
+ps_results <- compare_by_type(
+  ei_wv_ps,
+  eia_wv_ps,
+  type = "Hydro",         # keep Hydro to match your function
+  coord_tolerance = 0.5
+)
+
+
+# ps_results$in_both_grouped <- ps_results$in_both_grouped %>%
+#   rowwise() %>%
+#   mutate(
+#     sim = list(get_best_similarity(eia_plant_names, BusNames)),
+#     name_similarity = sim$jw,
+#     word_overlap = sim$overlap
+#   ) %>%
+#   ungroup()
+
+# Check for matches
+if (!is.null(ps_results) && !is.null(ps_results$in_both_grouped)) {
+  ps_results$in_both_grouped %>%
+    mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+} else {
+  cat("No matched Pumped Storage generators found.\n")
+}
+```
+
+
+
+### Thermal
+
+#### EI all
+
+```{r}
+# Map technology for EI and EIA
+ei_wv_mapped  <- map_technology(WV_ei_gens, "EI")
+eia_wv_mapped <- map_technology(eia_wv, "EIA")
+
+# Filter EI available if needed
+ei_wv_thermal <- ei_wv_mapped %>% filter(tech_group == "Thermal")
+ei_wv_thermal_available <- ei_wv_mapped %>% filter(tech_group == "Thermal", available == TRUE)
+
+# Filter EIA thermal
+eia_wv_thermal <- eia_wv_mapped %>% filter(tech_group == "Thermal")
+
+
+
+# Compare all thermal
+thermal_results <- compare_by_type(
+  ei_wv_thermal,
+  eia_wv_thermal,
+  type = "Thermal",
+  coord_tolerance = 0.5
+)
+
+thermal_results$in_both_grouped <- thermal_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
+
+thermal_results$in_both_grouped %>%
+  mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+
+
+```
+
+#### EI available only
+
+```{r}
+
+# Compare available only
+thermal_results <- compare_by_type(
+  ei_wv_thermal_available,
+  eia_wv_thermal,
+  type = "Thermal",
+  coord_tolerance = 0.5
+)
+
+thermal_results$in_both_grouped <- thermal_results$in_both_grouped %>%
+  rowwise() %>%
+  mutate(
+    sim = list(get_best_similarity(eia_plant_names, BusNames)),
+    name_similarity = sim$jw,
+    word_overlap = sim$overlap
+  ) %>%
+  ungroup()
+
+thermal_results$in_both_grouped %>%
+  mutate(
+    eia_plant_names_short = stringr::str_trunc(eia_plant_names, width = 30),
+    bus_names_short = stringr::str_trunc(BusNames, width = 40),
+  ) %>%
+  dplyr::select(
+    ei_plant_names,
+    eia_plant_names_short,
+    bus_names_short,
+    capacity_abs_pct_diff,
+    name_similarity,         # 👈 similarity score (Jaro-Winkler)
+    capacity_diff,
+    Rating,
+    eia_capacity,
+    n_ei_generators,
+    n_eia_generators,
+    GenNames,                # 👈 EI generator names
+    capacity_abs_diff,
+    capacity_pct_diff,
+    ei_lat, eia_lat, ei_lon, eia_lon
+  ) %>%
+  dplyr::arrange(capacity_abs_pct_diff, desc(name_similarity) )
+
+
+```
+
+### Thermal by fuel
+
+
+#### Natural Gas
+
+##### EI all
+
+```{r}
+# Natural Gas, all EI
+ng_all <- compare_thermal_by_fuel(ei_wv_thermal, eia_wv_thermal, "NATURAL_GAS", available_only = FALSE)
+ng_all$summary
+
+```
+
+##### EI available only
+
+```{r}
+# Natural Gas, available only
+ng_avail <- compare_thermal_by_fuel(ei_wv_thermal, eia_wv_thermal, "NATURAL_GAS", available_only = TRUE)
+ng_avail$summary
+```
+
+#### Coal
+
+##### EI all
+
+```{r}
+# Coal, available only
+coal_all = compare_thermal_by_fuel(ei_wv_thermal, eia_wv_thermal, "COAL", available_only = FALSE)
+coal_all$summary 
+```
+
+##### EI available
+
+```{r}
+# Coal, available only
+coal_all = compare_thermal_by_fuel(ei_wv_thermal, eia_wv_thermal, "COAL", available_only = TRUE)
+#coal_all$summary 
+```
+
+#### Distillate Fuel Oil
+
+##### All EI
+
+```{r}
+dist_all <- compare_thermal_by_fuel(ei_wv_thermal, eia_wv_thermal, "DISTILLATE_FUEL_OIL", available_only = FALSE)
+dist_all$summary 
+```
+
+##### EI available only
+
+```{r}
+dist_all <- compare_thermal_by_fuel(ei_wv_thermal, eia_wv_thermal, "DISTILLATE_FUEL_OIL", available_only = TRUE)
+dist_all$summary 
+```
+
+
+
 
