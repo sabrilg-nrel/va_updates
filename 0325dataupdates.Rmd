@@ -1,0 +1,806 @@
+---
+title: "Data Cleaning & Alignment (EI/Sienna ↔ EIA)"
+author: "Sara Abril-Guevara"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    theme: cosmo
+    toc: true
+    toc_float: true
+    df_print: paged
+    number_sections: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr) 
+library(readr) 
+library(ggplot2) 
+library(tidyr) 
+library(knitr)
+library(readxl)
+library(stringr)
+library(dplyr)
+library(readr)
+library(stringdist)
+library(purrr)
+```
+# Overview
+
+This document summarizes the data cleaning and validation process used to align generator fleets from EI/Sienna and EIA datasets for selected states (MN, IL, MD, VA, WV).
+
+The goal is to ensure consistency in installed capacity before running simulation models.
+
+
+## Methodology
+
+- DONE: Extract EI/Sienna generators and bus attributes using Kestrel
+
+- DONE: Aggregate generators by geographic coordinates
+
+- DONE: Standardize technology categories across datasets
+
+- WIP: Compare installed capacity by state and technology
+
+- WIP: Flag differences for further spatial matching and manual review
+
+```{r cars, message = FALSE}
+# EI datasets 
+VA_ei_gens = read_csv("~/Downloads/virginia_resources.csv") 
+MD_ei_gens = read_csv("~/Downloads/maryland_resources.csv")
+WV_ei_gens = read_csv("~/Downloads/west_virginia_resources.csv")
+
+# EI updated datasets 
+VA_updated_ei_gens = read_csv("/Users/sabrilg/Documents/GitHub/va_updates/virginia_updated_resources.csv") 
+MD_updated_ei_gens = read_csv("/Users/sabrilg/Documents/GitHub/va_updates/maryland_updated_resources.csv")
+WV_updated_ei_gens = read_csv("/Users/sabrilg/Documents/GitHub/va_updates/west_virginia_updated_resources.csv")
+
+#EIA
+eia_all <- read_excel("3_1_Generator_Y2024.xlsx", sheet = "Operable", skip = 1, col_types = "text")
+
+eia_all <- eia_all %>%
+  mutate(
+    `Nameplate Capacity (MW)` = as.numeric(`Nameplate Capacity (MW)`),
+    `Summer Capacity (MW)` = as.numeric(`Summer Capacity (MW)`),
+    `Winter Capacity (MW)` = as.numeric(`Winter Capacity (MW)`),
+    `Minimum Load (MW)` = as.numeric(`Minimum Load (MW)`),
+    `Nameplate Power Factor` = as.numeric(`Nameplate Power Factor`)
+  ) %>%
+  rename(nameplate_capacity = `Nameplate Capacity (MW)`)
+eia_va <- eia_all %>% filter(State == "VA")
+eia_md <- eia_all %>% filter(State == "MD")
+eia_wv <- eia_all %>% filter(State == "WV")
+
+```
+
+
+
+```{r}
+# Function to map EIA generators to high-level tech groups
+map_tech_group <- function(df) {
+  df %>%
+    mutate(
+      tech_group = case_when(
+        # Nuclear
+        `Prime Mover` == "NU" | Technology == "Nuclear" ~ "Nuclear",
+        
+        # Pumped Storage
+        `Prime Mover` == "PS" | str_detect(Technology, "Pumped Storage") ~ "Pumped Storage",
+        
+        # Hydro (excluding Pumped Storage)
+        `Prime Mover` == "HY" | str_detect(Technology, "Hydroelectric") & !str_detect(Technology, "Pumped Storage") ~ "Hydro",
+        
+        # Wind
+        `Prime Mover` == "WT" | str_detect(Technology, "Wind") ~ "Wind",
+        
+        # Solar
+        `Prime Mover` %in% c("PV", "CE") | str_detect(Technology, "Solar") ~ "Solar",
+        
+        # Thermal / Fossil
+        `Prime Mover` %in% c("ST", "CT", "CA", "GT", "IC", "CS", "FC", "CP") |
+          Technology %in% c(
+            "Conventional Steam Coal", 
+            "Natural Gas Fired Combined Cycle", 
+            "Natural Gas Steam Turbine",
+            "Coal Integrated Gasification Combined Cycle",
+            "Natural Gas Fired Combustion Turbine",
+            "Natural Gas Internal Combustion Engine"
+          ) ~ "Thermal",
+        
+        # Batteries / Storage / Flywheels
+        `Prime Mover` %in% c("BA", "BT", "FW") | str_detect(Technology, "Battery|Flywheels|Storage") ~ "Batteries",
+        
+        # Biomass / Waste / Geothermal / Other
+        str_detect(Technology, "Biomass|Waste|Geothermal|Other") ~ "Other",
+        
+        # Fallback
+        TRUE ~ "Other"
+      )
+    )
+}
+# Clean and map tech_group for all three states
+eia_va <- eia_va %>% map_tech_group()
+eia_md <- eia_md %>% map_tech_group()
+eia_wv <- eia_wv %>% map_tech_group()
+```
+
+
+
+
+## Technology Mapping
+
+```{r}
+map_technology = function(df, source = "EI") {
+  
+  if (source == "EI") {
+    
+    df %>%
+      mutate(
+        tech_group = case_when(
+          fuel == "NUCLEAR" ~ "Nuclear",
+          generator_type %in% c("Solar") ~ "Solar",
+          generator_type %in% c("Wind") ~ "Wind",
+          generator_type %in% c("ThermalStandard", "ThermalMultiStart") ~ "Thermal",
+          generator_type %in% c("Storage") ~ "Storage",
+          prime_mover_type == "PS" ~ "Pumped Storage",
+          generator_type %in% c("Hydro") ~ "Hydro",
+          TRUE ~ "Other"
+        )
+      )
+    
+  } else {
+    
+    df %>%
+      mutate(
+        tech_group = case_when(
+          
+          # --- Explicit first (avoid misclassification) ---
+          Technology == "Nuclear" ~ "Nuclear",
+          
+          Technology == "Hydroelectric Pumped Storage" | `Prime Mover` == "PS" ~ "Pumped Storage",
+          
+          Technology == "Conventional Hydroelectric" ~ "Hydro",
+          
+          Technology == "Batteries" ~ "Batteries",
+          
+          Technology %in% c("Flywheels", "Natural Gas with Compressed Air Storage") ~ "Storage",
+          
+          # --- Pattern-based (your original strength) ---
+          grepl("Solar", Technology) ~ "Solar",
+          grepl("Wind", Technology) ~ "Wind",
+          
+          grepl("Hydro", Technology) & !grepl("Pumped Storage", Technology) ~ "Hydro",
+          
+          grepl("Gas|Coal|Petroleum|Steam|Combustion", Technology) ~ "Thermal",
+          
+          grepl("Biomass|Waste|Landfill|Geothermal", Technology) ~ "Other",
+          
+          TRUE ~ "Other"
+        )
+      )
+  }
+}
+# Summarize function including units for both EI and EIA
+summarize_capacity_units = function(ei_df, eia_df, state_name) {
+
+  ei_clean  = map_technology(ei_df, "EI")
+  eia_clean = map_technology(eia_df, "EIA")
+
+  # EI summary
+  ei_summary = ei_clean %>%
+    group_by(tech_group) %>%
+    summarise(
+      EI_total_units = n(),
+      EI_available_units = sum(available == TRUE, na.rm = TRUE),
+      EI_total_capacity = sum(rating, na.rm = TRUE),
+      EI_available_capacity = sum(rating[available == TRUE], na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  # EIA summary
+  eia_summary = eia_clean %>%
+    group_by(tech_group) %>%
+    summarise(
+      EIA_units = n(),
+      EIA_capacity = sum(nameplate_capacity, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  # Join summaries and calculate differences
+  summary_df = full_join(ei_summary, eia_summary, by = "tech_group") %>%
+    mutate(
+      state = state_name,
+      diff_available_capacity = EI_available_capacity - EIA_capacity,
+      pct_diff_available_capacity = ifelse(EIA_capacity > 0,
+                                           (diff_available_capacity / EIA_capacity) * 100,
+                                           NA),
+      diff_total_capacity = EI_total_capacity - EIA_capacity,
+      pct_diff_total_capacity = ifelse(EIA_capacity > 0,
+                                       (diff_total_capacity / EIA_capacity) * 100,
+                                       NA)
+    ) %>%
+    select(state, tech_group, EI_total_units, EI_available_units, EIA_units,
+           EI_total_capacity, EI_available_capacity, EIA_capacity,
+           diff_total_capacity, pct_diff_total_capacity,
+           diff_available_capacity, pct_diff_available_capacity)
+
+  # Optional: reorder tech groups
+  tech_order = c("Nuclear", "Thermal", "Hydro", "Pumped Storage", "Storage", "Solar", "Wind", "Other")
+  summary_df$tech_group = factor(summary_df$tech_group, levels = tech_order)
+  summary_df = summary_df %>% arrange(tech_group)
+
+  return(summary_df)
+}
+```
+
+
+
+### VA 
+```{r}
+## Run for VA
+va_summary_units = summarize_capacity_units(VA_ei_gens, eia_va, "VA")
+va_summary_units
+va_up_summary_units = summarize_capacity_units(VA_updated_ei_gens, eia_va, "VA")
+va_up_summary_units
+```
+
+
+### MD
+
+```{r}
+md_summary_units = summarize_capacity_units(MD_ei_gens, eia_md, "MD")
+md_summary_units
+md_up_summary_units = summarize_capacity_units(MD_updated_ei_gens, eia_md, "MD")
+md_up_summary_units
+```
+
+### WV
+
+```{r}
+wv_summary_units = summarize_capacity_units(WV_ei_gens, eia_wv, "WV")
+wv_summary_units
+wv_up_summary_units = summarize_capacity_units(WV_updated_ei_gens, eia_wv, "WV")
+wv_up_summary_units
+```
+
+## Capacity Summary Comparison
+
+```{r summary-function}
+summarize_capacity_by_state = function(ei_df, eia_df, state_name) {
+  
+  # ---- EI: split available vs unavailable ----
+  ei_clean = map_technology(ei_df, "EI")
+  
+  ei_available = ei_clean %>%
+    filter(available == TRUE)
+  
+  ei_unavailable = ei_clean %>%
+    filter(available == FALSE)
+  
+  # ---- Aggregate EI ----
+  ei_summary_available = ei_available %>%
+    group_by(tech_group) %>%
+    summarise(EI_available_capacity = sum(rating, na.rm = TRUE), .groups = "drop")
+  
+  ei_summary_total = ei_clean %>%
+    group_by(tech_group) %>%
+    summarise(EI_total_capacity = sum(rating, na.rm = TRUE), .groups = "drop")
+  
+  # ---- EIA ----
+  eia_clean = map_technology(eia_df, "EIA")
+  
+  eia_summary = eia_clean %>%
+    group_by(tech_group) %>%
+    summarise(EIA_capacity = sum(nameplate_capacity, na.rm = TRUE), .groups = "drop")
+  
+  # ---- Merge ----
+  summary = full_join(ei_summary_available, eia_summary, by = "tech_group") %>%
+    full_join(ei_summary_total, by = "tech_group") %>%
+    mutate(
+      state = state_name,
+      EI_available_capacity = replace_na(EI_available_capacity, 0),
+      EI_total_capacity = replace_na(EI_total_capacity, 0),
+      EIA_capacity = replace_na(EIA_capacity, 0),
+      
+      # Main comparison (correct one)
+      diff_available = EI_available_capacity - EIA_capacity,
+      pct_diff_available = ifelse(EIA_capacity > 0,
+                                 diff_available / EIA_capacity * 100, NA),
+      
+      # Diagnostic comparison
+      diff_total = EI_total_capacity - EIA_capacity,
+      pct_diff_total = ifelse(EIA_capacity > 0,
+                             diff_total / EIA_capacity * 100, NA)
+    )
+  
+  return(summary)
+}
+```
+
+```{r}
+va_summary = summarize_capacity_by_state(VA_ei_gens, eia_va, "VA")
+md_summary = summarize_capacity_by_state(MD_ei_gens, eia_md, "MD")
+wv_summary = summarize_capacity_by_state(WV_ei_gens, eia_wv, "WV")
+all_states_summary = bind_rows(va_summary, md_summary, wv_summary)
+
+# UPDATED summaries
+va_updated_summary = summarize_capacity_by_state(VA_updated_ei_gens, eia_va, "VA_updated")
+md_updated_summary = summarize_capacity_by_state(MD_updated_ei_gens, eia_md, "MD_updated")
+wv_updated_summary = summarize_capacity_by_state(WV_updated_ei_gens, eia_wv, "WV_updated")
+```
+
+```{r}
+plot_thermal_discrepancy <- function(ei_df, eia_df, state_name, available_only = TRUE) {
+  
+  # -------------------------
+  # EI Thermal (EXCLUDE NUCLEAR)
+  # -------------------------
+  ei_thermal <- ei_df %>%
+    filter(prime_mover_type %in% c("ST", "CT", "CC", "OT")) %>%
+    filter(fuel != "NUCLEAR") %>%   # <-- key fix
+    { if (available_only) filter(., available == TRUE) else . } %>%
+    group_by(fuel) %>%
+    summarise(EI_capacity = sum(rating, na.rm = TRUE), .groups = "drop")
+  
+  # -------------------------
+  # EIA Thermal
+  # -------------------------
+  eia_thermal <- eia_df %>%
+    filter(Technology %in% c(
+      "Conventional Steam Coal",
+      "Natural Gas Fired Combined Cycle",
+      "Natural Gas Steam Turbine",
+      "Natural Gas Fired Combustion Turbine",
+      "Natural Gas Internal Combustion Engine",
+      "Petroleum Liquids",
+      "Petroleum Coke",
+      "Other Gases"
+    )) %>%
+    mutate(fuel = case_when(
+      Technology == "Conventional Steam Coal" ~ "COAL",
+      
+      Technology %in% c(
+        "Natural Gas Fired Combined Cycle",
+        "Natural Gas Steam Turbine",
+        "Natural Gas Fired Combustion Turbine",
+        "Natural Gas Internal Combustion Engine",
+        "Other Gases"
+      ) ~ "NATURAL_GAS",
+      
+      Technology %in% c(
+        "Petroleum Liquids",
+        "Petroleum Coke"
+      ) ~ "DISTILLATE_FUEL_OIL",
+      
+      TRUE ~ "OTHER"
+    )) %>%
+    group_by(fuel) %>%
+    summarise(EIA_capacity = sum(nameplate_capacity, na.rm = TRUE), .groups = "drop")
+  
+  # -------------------------
+  # Combine
+  # -------------------------
+  thermal_compare <- full_join(ei_thermal, eia_thermal, by = "fuel") %>%
+    replace_na(list(EI_capacity = 0, EIA_capacity = 0)) %>%
+    pivot_longer(cols = c(EI_capacity, EIA_capacity),
+                 names_to = "source",
+                 values_to = "capacity")
+  
+  # -------------------------
+  # Plot
+  # -------------------------
+  ggplot(thermal_compare, aes(x = fuel, y = capacity, fill = source)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    theme_minimal() +
+    labs(
+      title = paste(state_name, "- Thermal Capacity by Fuel (EI (Available) vs EIA)"),
+      x = "Fuel Type",
+      y = "Capacity (MW)",
+      fill = "Source"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 9)
+    ) +
+    scale_fill_manual(values = c(
+      "EI_capacity" = "#FF7F73",
+      "EIA_capacity" = "#00C4CC"
+    ))
+}
+
+
+```
+
+```{r}
+plot_thermal_3bars <- function(ei_df, eia_df, state_name) {
+  
+  # -------------------------
+  # EI Thermal
+  # -------------------------
+  ei_thermal <- ei_df %>%
+    filter(prime_mover_type %in% c("ST", "CT", "CC", "OT")) %>%
+    filter(fuel != "NUCLEAR") %>%
+    group_by(fuel) %>%
+    summarise(
+      EI_available_capacity = sum(rating[available == TRUE], na.rm = TRUE),
+      EI_total_capacity     = sum(rating, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # -------------------------
+  # EIA Thermal
+  # -------------------------
+  eia_thermal <- eia_df %>%
+    filter(Technology %in% c(
+      "Conventional Steam Coal",
+      "Natural Gas Fired Combined Cycle",
+      "Natural Gas Steam Turbine",
+      "Natural Gas Fired Combustion Turbine",
+      "Natural Gas Internal Combustion Engine",
+      "Petroleum Liquids",
+      "Petroleum Coke",
+      "Other Gases"
+    )) %>%
+    mutate(fuel = case_when(
+      Technology == "Conventional Steam Coal" ~ "COAL",
+      
+      Technology %in% c(
+        "Natural Gas Fired Combined Cycle",
+        "Natural Gas Steam Turbine",
+        "Natural Gas Fired Combustion Turbine",
+        "Natural Gas Internal Combustion Engine",
+        "Other Gases"
+      ) ~ "NATURAL_GAS",
+      
+      Technology %in% c(
+        "Petroleum Liquids",
+        "Petroleum Coke"
+      ) ~ "DISTILLATE_FUEL_OIL",
+      
+      TRUE ~ "OTHER"
+    )) %>%
+    group_by(fuel) %>%
+    summarise(
+      EIA_capacity = sum(nameplate_capacity, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # -------------------------
+  # Combine
+  # -------------------------
+  thermal_compare <- full_join(ei_thermal, eia_thermal, by = "fuel") %>%
+    replace_na(list(
+      EI_available_capacity = 0,
+      EI_total_capacity = 0,
+      EIA_capacity = 0
+    )) %>%
+    pivot_longer(
+      cols = c(EI_available_capacity, EI_total_capacity, EIA_capacity),
+      names_to = "source",
+      values_to = "capacity"
+    )
+  
+  # -------------------------
+  # Plot
+  # -------------------------
+  ggplot(thermal_compare, aes(x = fuel, y = capacity, fill = source)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    theme_minimal() +
+    labs(
+      title = paste(state_name, "- Thermal Capacity (EI Available vs Total vs EIA)"),
+      x = "Fuel Type",
+      y = "Capacity (MW)",
+      fill = "Source"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 9)
+    ) +
+    scale_fill_manual(values = c(
+      "EI_available_capacity" = "#FF7F73",   # coral
+      "EI_total_capacity"     = "#FFA07A",   # lighter coral
+      "EIA_capacity"          = "#00C4CC"    # teal
+    ))
+}
+```
+
+```{r}
+plot_compare_versions <- function(original_df, updated_df, state_name) {
+  
+  original_long <- original_df %>%
+    select(tech_group, EI_available_capacity, EIA_capacity) %>%
+    mutate(version = "Original EI")
+  
+  updated_long <- updated_df %>%
+    select(tech_group, EI_available_capacity, EIA_capacity) %>%
+    mutate(version = "Updated EI")
+  
+  combined <- bind_rows(original_long, updated_long) %>%
+    pivot_longer(
+      cols = c(EI_available_capacity, EIA_capacity),
+      names_to = "source",
+      values_to = "capacity"
+    ) %>%
+    mutate(
+  source = case_when(
+    source == "EI_available_capacity" & version == "Original EI" ~ "EI avail (Original)",
+    source == "EI_available_capacity" & version == "Updated EI" ~ "EI avail (Updated)",
+    source == "EIA_capacity" ~ "EIA"
+  )
+)
+  
+  ggplot(combined, aes(x = tech_group, y = capacity, fill = source)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    theme_minimal() +
+    labs(
+      title = paste(state_name, "- Capacity Comparison (Original vs Updated EI vs EIA)"),
+      x = "Technology",
+      y = "Capacity (MW)",
+      fill = "Source"
+    ) +
+    scale_fill_manual(values = c(
+      "EI avail (Original)" = "#FF7F73",
+      "EI avail (Updated)"  = "#FF4FF3",
+      "EIA"           = "#00C4CC"
+    )) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+plot_thermal_4bars <- function(ei_df, ei_updated_df, eia_df, state_name) {
+  
+  # -------------------------
+  # EI Thermal (ORIGINAL)
+  # -------------------------
+  ei_thermal <- ei_df %>%
+    filter(prime_mover_type %in% c("ST", "CT", "CC", "OT")) %>%
+    filter(fuel != "NUCLEAR") %>%
+    group_by(fuel) %>%
+    summarise(
+      EI_available_capacity = sum(rating[available == TRUE], na.rm = TRUE),
+      EI_total_capacity     = sum(rating, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # -------------------------
+  # EI Thermal (UPDATED availability)
+  # -------------------------
+  ei_updated_thermal <- ei_updated_df %>%
+    filter(prime_mover_type %in% c("ST", "CT", "CC", "OT")) %>%
+    filter(fuel != "NUCLEAR") %>%
+    group_by(fuel) %>%
+    summarise(
+      EI_updated_available_capacity = sum(rating[available == TRUE], na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # -------------------------
+  # EIA Thermal
+  # -------------------------
+  eia_thermal <- eia_df %>%
+    filter(Technology %in% c(
+      "Conventional Steam Coal",
+      "Natural Gas Fired Combined Cycle",
+      "Natural Gas Steam Turbine",
+      "Natural Gas Fired Combustion Turbine",
+      "Natural Gas Internal Combustion Engine",
+      "Petroleum Liquids",
+      "Petroleum Coke",
+      "Other Gases"
+    )) %>%
+    mutate(fuel = case_when(
+      Technology == "Conventional Steam Coal" ~ "COAL",
+      
+      Technology %in% c(
+        "Natural Gas Fired Combined Cycle",
+        "Natural Gas Steam Turbine",
+        "Natural Gas Fired Combustion Turbine",
+        "Natural Gas Internal Combustion Engine",
+        "Other Gases"
+      ) ~ "NATURAL_GAS",
+      
+      Technology %in% c(
+        "Petroleum Liquids",
+        "Petroleum Coke"
+      ) ~ "DISTILLATE_FUEL_OIL",
+      
+      TRUE ~ "OTHER"
+    )) %>%
+    group_by(fuel) %>%
+    summarise(
+      EIA_capacity = sum(nameplate_capacity, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # -------------------------
+  # Combine all
+  # -------------------------
+  thermal_compare <- ei_thermal %>%
+    full_join(ei_updated_thermal, by = "fuel") %>%
+    full_join(eia_thermal, by = "fuel") %>%
+    replace_na(list(
+      EI_available_capacity = 0,
+      EI_total_capacity = 0,
+      EI_updated_available_capacity = 0,
+      EIA_capacity = 0
+    )) %>%
+    pivot_longer(
+      cols = c(
+        EI_available_capacity,
+        EI_updated_available_capacity,
+        EI_total_capacity,
+        EIA_capacity
+      ),
+      names_to = "source",
+      values_to = "capacity"
+    )
+  
+  # -------------------------
+  # Plot
+  # -------------------------
+  ggplot(thermal_compare, aes(x = fuel, y = capacity, fill = source)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    theme_minimal() +
+    labs(
+      title = paste(state_name, "- Thermal Capacity (EI Original vs Updated vs Total vs EIA)"),
+      x = "Fuel Type",
+      y = "Capacity (MW)",
+      fill = "Source"
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 9)
+    ) +
+    scale_fill_manual(values = c(
+      "EI_available_capacity"          =  "#FF7F73",  # light coral (original)
+      "EI_updated_available_capacity"  = "#FF4FF3",  # darker coral (updated)
+      "EI_total_capacity"              = "#FFA07A",  # dark red
+      "EIA_capacity"                   = "#00C4CC"   # teal
+    ))
+   
+}
+```
+
+
+
+### VA 
+
+```{r run-summary}
+
+va_summary %>%
+  arrange(state, tech_group) %>%
+  dplyr::select(
+    state, tech_group,
+    EI_available_capacity,
+    EIA_capacity,
+    pct_diff_available,
+    EI_total_capacity,
+    pct_diff_total
+  ) %>%
+  kable(digits = 1, caption = "VA Capacity Comparison (Available vs Total EI)")
+
+va_plot_df = va_summary %>%
+  select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
+  pivot_longer(
+    cols = c(EI_available_capacity, EIA_capacity),
+    names_to = "source",
+    values_to = "capacity"
+  )
+ggplot(va_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Installed Capacity Comparison (VA)",
+    y = "MW",
+    x = "Technology",
+    fill = "Source"
+  )
+plot_compare_versions(va_summary, va_updated_summary, "Virginia")
+```
+
+```{r}
+plot_thermal_discrepancy(VA_ei_gens, eia_va, "Virginia")
+```
+
+
+```{r}
+plot_thermal_3bars(VA_ei_gens, eia_va, "VA")
+```
+
+```{r}
+plot_thermal_4bars(VA_ei_gens, VA_updated_ei_gens, eia_va, "VA")
+```
+
+
+### MD 
+```{r }
+md_summary %>%
+  arrange(state, tech_group) %>%
+  dplyr::select(
+    state, tech_group,
+    EI_available_capacity,
+    EIA_capacity,
+    pct_diff_available,
+    EI_total_capacity,
+    pct_diff_total
+  ) %>%
+  kable(digits = 1, caption = "MD Capacity Comparison (Available vs Total EI)")
+md_plot_df = md_summary %>%
+  select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
+  pivot_longer(
+    cols = c(EI_available_capacity, EIA_capacity),
+    names_to = "source",
+    values_to = "capacity"
+  )
+
+ggplot(md_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Installed Capacity Comparison (MD)",
+    y = "MW",
+    x = "Technology",
+    fill = "Source"
+  )
+plot_compare_versions(md_summary, md_updated_summary, "Maryland")
+```
+
+```{r}
+plot_thermal_discrepancy(MD_ei_gens, eia_md, "Maryland")
+```
+
+```{r}
+plot_thermal_3bars(MD_ei_gens, eia_md, "MD")
+```
+
+```{r}
+plot_thermal_4bars(MD_ei_gens, MD_updated_ei_gens, eia_md, "MD")
+```
+
+
+
+### WV 
+```{r }
+wv_summary %>%
+  arrange(state, tech_group) %>%
+  dplyr::select(
+    state, tech_group,
+    EI_available_capacity,
+    EIA_capacity,
+    pct_diff_available,
+    EI_total_capacity,
+    pct_diff_total
+  ) %>%
+  kable(digits = 1, caption = "WV Capacity Comparison (Available vs Total EI)")
+wv_plot_df = wv_summary %>%
+  select(state, tech_group, EI_available_capacity, EIA_capacity) %>%
+  pivot_longer(
+    cols = c(EI_available_capacity, EIA_capacity),
+    names_to = "source",
+    values_to = "capacity"
+  )
+
+ggplot(wv_plot_df, aes(x = tech_group, y = capacity, fill = source)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Installed Capacity Comparison (WV)",
+    y = "MW",
+    x = "Technology",
+    fill = "Source"
+  )
+plot_compare_versions(wv_summary, wv_updated_summary, "West Virginia")
+```
+
+```{r}
+plot_thermal_discrepancy(WV_ei_gens, eia_wv, "West Virginia")
+```
+
+```{r}
+plot_thermal_3bars(WV_ei_gens, eia_wv, "WV")
+```
+
+```{r}
+plot_thermal_4bars(WV_ei_gens, WV_updated_ei_gens, eia_wv, "WV")
+```
+
