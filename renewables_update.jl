@@ -198,9 +198,9 @@ include("/Users/sabrilg/Documents/GitHub/va_updates/EIA860_comparison.jl")
 # ── 6. Column sets ────────────────────────────────────────────────────────────
 const KEY_COLS = [
     "name", "bus_number", "bus", "generator_type", "prime_mover_type",
-    "rating", "eia_capacity_mw", "ts_column_name",
-    "lat", "lon", "plant_name",
-    "Plant ID", "Plant Name", "Technology", "Prime Mover Code", "BusName", "kV",
+    "rating", "eia_capacity_mw", "Prime Mover Code", "eia860_status", "available",
+    "ts_column_name", "lat", "lon", "plant_name",
+    "Plant ID", "Plant Name", "Technology", "BusName", "kV",
 ]
 const UNMATCHED_COLS = [
     "name", "bus_number", "bus", "generator_type", "prime_mover_type",
@@ -367,6 +367,34 @@ function summarize_solar(label::String, result::DataFrame)
         println("    $gt: $n")
     end
     println("="^60)
+
+    # ── EIA860 status breakdown ───────────────────────────────────────────────
+    if "eia860_status" in names(matched)
+        println("  Matched by eia860_status:")
+        for st in sort(unique(skipmissing(matched.eia860_status)))
+            n  = count(==(st), skipmissing(matched.eia860_status))
+            mw = round(sum(Float64.(coalesce.(
+                    filter(r -> coalesce(r["eia860_status"], "") == st,
+                           matched).rating, 0.0))), digits=1)
+            flag = st == "Operable" ? "✅" : "⚠️ "
+            println("    $flag $st: $n gens | $(mw) MW")
+        end
+        non_op = filter(r -> coalesce(r["eia860_status"], "") != "Operable", matched)
+        if nrow(non_op) > 0
+            println("\n  ⚠️  Non-operable matched generators (", nrow(non_op), "):")
+            show(DataFrames.select(non_op,
+                 intersect(["name", "bus_number", "bus", "generator_type",
+                            "rating", "eia_capacity_mw", "Prime Mover Code",
+                            "eia860_status", "Plant ID", "Plant Name"],
+                           names(non_op))), allrows=true)
+        end
+    end
+    println("="^60)
+
+    # ── Reorder columns in stored DataFrames ──────────────────────────────────
+    key_first = intersect(KEY_COLS, names(matched))
+    rest      = setdiff(names(matched), KEY_COLS)
+    matched   = DataFrames.select(matched, vcat(key_first, rest))
 
     println("\n📋 $label matched generators (", nrow(matched), " rows):")
     show(sort(DataFrames.select(matched, KEY_COLS), "bus_number"), allrows=true)
@@ -1045,6 +1073,7 @@ function build_state_solar_df(label::String,
         eia_capacity_mw = solar_matched[!, "eia_capacity_mw"],
         bus_voltage_kv  = [clean_bus_voltage(x) for x in solar_matched[!, "kV"]],
         eia860_status   = solar_matched[!, "eia860_status"],
+        available       = solar_matched[!, "available"],
     )
 
     # ── Source 2: EI unmatched → MMWG matched ────────────────────────────────
@@ -1062,6 +1091,7 @@ function build_state_solar_df(label::String,
         eia_capacity_mw = fill(missing, nrow(mmwg_matched)),
         bus_voltage_kv  = [clean_bus_voltage(x) for x in mmwg_matched[!, "Bus kV"]],
         eia860_status   = fill(missing, nrow(mmwg_matched)),  # not available via MMWG
+        available       = mmwg_matched[!, "available"],
     )
 
     final_df = vcat(s1, s2, cols=:union)
@@ -1139,7 +1169,9 @@ function build_eia_only_solar_df(label::String,
         bus_name        = [clean_bus_name(x) for x in eia_has_both[!, "BusName"]],
         ei_capacity_mw  = fill(missing, nrow(eia_has_both)),
         eia_capacity_mw = eia_has_both[!, "eia_capacity_mw"],
+        eia860_status   = eia_has_both[!, "eia860_status"],
         bus_voltage_kv  = [clean_bus_voltage(x) for x in eia_has_both[!, "kV"]],
+
     )
 
     # ── Source 4: EIA neither → MMWG exact name match ────────────────────────
@@ -1156,6 +1188,7 @@ function build_eia_only_solar_df(label::String,
         bus_name        = neither_mmwg_matched[!, "Load Flow  Bus Name"],
         ei_capacity_mw  = fill(missing, nrow(neither_mmwg_matched)),
         eia_capacity_mw = neither_mmwg_matched[!, "eia_capacity_mw"],
+        eia860_status   = neither_mmwg_matched[!, "eia860_status"],
         bus_voltage_kv  = neither_mmwg_matched[!, "Bus kV"],
     )
 
@@ -1173,6 +1206,7 @@ function build_eia_only_solar_df(label::String,
         bus_name        = fuzzy_matched[!, "Load Flow  Bus Name"],
         ei_capacity_mw  = fill(missing, nrow(fuzzy_matched)),
         eia_capacity_mw = fuzzy_matched[!, "eia_capacity_mw"],
+        eia860_status   = fuzzy_matched[!, "eia860_status"],
         bus_voltage_kv  = fuzzy_matched[!, "Bus kV"],
     )
 
@@ -1205,6 +1239,19 @@ wv_solar_eia_only = build_eia_only_solar_df("WV", wv_eia_has_both, wv_neither_mm
 
 function build_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::String)
 
+    # ── Helper: derive available from eia860_status ───────────────────────────
+    function derive_available(eia860_status, existing_available)
+        st = coalesce(string(eia860_status), "")
+        if st == "Operable" || st == "Proposed"
+            return true
+        elseif st == "Retired/Canceled"
+            return false
+        else
+            # missing or unknown — preserve existing value if present
+            return coalesce(existing_available, missing)
+        end
+    end
+
     ei_out = DataFrame(
         gen_name       = ei_df[!, "gen_name"],
         bus_id         = ei_df[!, "bus_id"],
@@ -1213,6 +1260,12 @@ function build_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::String
         lon            = coalesce.(ei_df[!, "eia_lon"], ei_df[!, "ei_lon"]),
         capacity_mw    = coalesce.(ei_df[!, "eia_capacity_mw"], ei_df[!, "ei_capacity_mw"]),
         bus_voltage_kv = ei_df[!, "bus_voltage_kv"],
+        eia860_status  = ei_df[!, "eia860_status"],
+        available      = [derive_available(ei_df[i, "eia860_status"],
+                              "available" in names(ei_df) ? ei_df[i, "available"] : missing)
+                          for i in 1:nrow(ei_df)],
+        ts_column_name = "ts_column_name" in names(ei_df) ?
+                          ei_df[!, "ts_column_name"] : fill(missing, nrow(ei_df)),
         source         = ei_df[!, "source"],
         state          = fill(label, nrow(ei_df)),
     )
@@ -1225,12 +1278,16 @@ function build_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::String
         lon            = eia_only_df[!, "eia_lon"],
         capacity_mw    = eia_only_df[!, "eia_capacity_mw"],
         bus_voltage_kv = eia_only_df[!, "bus_voltage_kv"],
+        eia860_status  = eia_only_df[!, "eia860_status"],
+        available      = [derive_available(eia_only_df[i, "eia860_status"], missing)
+                          for i in 1:nrow(eia_only_df)],
+        ts_column_name = "ts_column_name" in names(eia_only_df) ?
+                          eia_only_df[!, "ts_column_name"] : fill(missing, nrow(eia_only_df)),
         source         = eia_only_df[!, "source"],
         state          = fill(label, nrow(eia_only_df)),
     )
 
-    combined = vcat(ei_out, eia_out, cols=:union)
-    combined = sort(combined, :bus_id)
+    combined = sort(vcat(ei_out, eia_out, cols=:union), :bus_id)
 
     println("\n", "="^60)
     println("$label — Export Summary")
@@ -1241,11 +1298,20 @@ function build_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::String
     for src in sort(unique(skipmissing(combined.source)))
         println("    $(src): ", count(==(src), skipmissing(combined.source)))
     end
+    println("─"^60)
+    println("  By availability:")
+    for av in [true, false, missing]
+        n = count(r -> isequal(r.available, av), eachrow(combined))
+        n == 0 && continue
+        label_str = ismissing(av) ? "missing" : string(av)
+        println("    available=$label_str: $n gens")
+    end
     println("="^60)
 
     return combined
 end
-# ── Build export DataFrames ───────────────────────────────────────────────────
+
+# ── Rebuild exports ───────────────────────────────────────────────────────────
 va_export = build_export_df(va_solar, va_solar_eia_only, "VA")
 md_export = build_export_df(md_solar, md_solar_eia_only, "MD")
 wv_export = build_export_df(wv_solar, wv_solar_eia_only, "WV")
@@ -1319,6 +1385,23 @@ println("  → solar_RE_VA_EI_buses.csv (", nrow(va_export), " rows)")
 println("  → solar_RE_MD_EI_buses.csv (", nrow(md_export), " rows)")
 println("  → solar_RE_WV_EI_buses.csv (", nrow(wv_export), " rows)")
 
+
+skipped_gen_names_va = Set(name for (name, _) in skip_generators_va)
+skipped_gen_names_md = Set(name for (name, _) in skip_generators_md)
+
+function collect_skipped_uids(matched_df::DataFrame, skipped_names::Set)
+    "uid" in names(matched_df) || return Set{String}()
+    # Find rows whose EI gen_name was skipped
+    skipped_rows = filter(r -> coalesce(r["name"], "") in skipped_names, matched_df)
+    return Set{String}(string(u) for u in skipmissing(skipped_rows[!, "uid"]))
+end
+
+freed_uids = union(
+    collect_skipped_uids(va_solar_matched, skipped_gen_names_va),
+    collect_skipped_uids(md_solar_matched, skipped_gen_names_md),
+)
+
+println("UIDs freed back from skipped generators: ", length(freed_uids))
 
 # ── Check which buses in solar exports don't exist in EI ──────────────────────
 ei_valid_buses = Set{Int}(bus_coords[!, :bus_number])
@@ -1484,6 +1567,80 @@ for row in eachrow(solar_comparison)
     end
 end
 
+# ── Section 3B: Availability comparison — EI (available) vs EIA (Operable+Proposed) ──
+println("\n\n📊 SECTION 3B — AVAILABILITY COMPARISON")
+println("─"^70)
+println("  EI available         = generators with available=true in export")
+println("  EIA Operable+Proposed = eia860_status == 'Operable' or 'Proposed'")
+println("  EIA Retired           = eia860_status == 'Retired/Canceled'\n")
+
+# ── Build EIA reference by status ─────────────────────────────────────────────
+eia_pv_status = filter(row -> coalesce(row["Prime Mover Code"] == "PV", false) &&
+                               coalesce(row["State"] in ["VA", "MD", "WV"], false),
+                        eia_expanded)
+
+# ── Safe MW sum helper ────────────────────────────────────────────────────────
+safe_sum_mw(col) = round(sum(Float64.(coalesce.(col, 0.0))), digits=1)
+
+
+# ── Build comparison table ────────────────────────────────────────────────────
+avail_comparison = DataFrame(
+    State              = String[],
+    ei_avail_n         = Int[],
+    ei_avail_mw        = Float64[],
+    eia_op_prop_n      = Int[],
+    eia_op_prop_mw     = Float64[],
+    eia_retired_n      = Int[],
+    eia_retired_mw     = Float64[],
+    diff_mw            = Float64[],
+    pct_captured       = Float64[],
+)
+
+for (label, df) in [("VA", va_export), ("MD", md_export), ("WV", wv_export)]
+    ei_avail    = filter(r -> coalesce(r.available, false) == true, df)
+    ei_avail_mw = safe_sum_mw(ei_avail.capacity_mw)
+
+    eia_op_prop = filter(r -> coalesce(r["State"] == label, false) &&
+                              coalesce(r["eia860_status"] in ["Operable", "Proposed"], false),
+                         eia_pv_status)
+    eia_op_prop_mw = nrow(eia_op_prop) > 0 ?
+        safe_sum_mw([Float64(x) for x in skipmissing(eia_op_prop.eia_capacity_mw)]) : 0.0
+
+    eia_retired = filter(r -> coalesce(r["State"] == label, false) &&
+                              coalesce(r["eia860_status"] == "Retired/Canceled", false),
+                          eia_pv_status)
+    eia_ret_mw = nrow(eia_retired) > 0 ?
+        safe_sum_mw([Float64(x) for x in skipmissing(eia_retired.eia_capacity_mw)]) : 0.0
+
+    diff = round(ei_avail_mw - eia_op_prop_mw, digits=1)
+    pct  = eia_op_prop_mw > 0 ?
+           round(ei_avail_mw / eia_op_prop_mw * 100, digits=1) : 0.0
+
+    push!(avail_comparison, (label,
+        nrow(ei_avail),    ei_avail_mw,
+        nrow(eia_op_prop), eia_op_prop_mw,
+        nrow(eia_retired), eia_ret_mw,
+        diff, pct))
+end
+
+show(avail_comparison, allrows=true)
+println("\n\n  ⚠️  Notes on availability gaps:")
+for row in eachrow(avail_comparison)
+    pct  = row.pct_captured
+    diff = row.diff_mw
+    if pct < 95.0
+        println("  • $(row.State): capturing $(pct)% of Operable+Proposed",
+                " — missing ~$(abs(diff)) MW")
+        println("    Likely causes: proposed projects not yet in EI model,")
+        println("    or EI model pre-dates EIA entry.")
+    elseif pct > 105.0
+        println("  • $(row.State): capturing $(pct)% — OVER Operable+Proposed by $(diff) MW")
+        println("    Possible cause: EI includes generators marked Proposed in EIA.")
+    else
+        println("  • $(row.State): ✅ $(pct)% of Operable+Proposed captured — within ±5%")
+    end
+end
+
 # ── Section 4: Breakdown by source ───────────────────────────────────────────
 println("\n\n📋 BREAKDOWN BY MATCH SOURCE")
 println("─"^70)
@@ -1552,6 +1709,9 @@ for (label, df) in [("VA", va_export),
 end
 
 # ── Section 6: EI misclassification check ────────────────────────────────────
+
+# TODO Add the generator that I changed manually at the beggining.
+
 println("\n\n🔁 EI GENERATOR MISCLASSIFICATION CHECK")
 println("─"^70)
 println("  Solar PV generators in EI model matched to EIA PV entries.")
@@ -1670,9 +1830,105 @@ sp3 = plot(
     )
 )
 
+# ── Plot sp4: EI availability % of EIA reference + total capacity tags ────────
+states = ["VA", "MD", "WV"]
+
+safe_sum(col) = sum(Float64.(coalesce.(col, 0.0)))
+
+# EIA Operable+Proposed reference per state
+eia_op_prop_mw_by_state = [
+    begin
+        sub = filter(r -> coalesce(r["State"] == st, false) &&
+                          coalesce(r["eia860_status"] in ["Operable", "Proposed"], false),
+                     eia_pv_status)
+        nrow(sub) > 0 ? safe_sum(sub.eia_capacity_mw) : 0.0
+    end
+    for st in states
+]
+
+# EI availability MW per state per label
+avail_labels = ["Operable/Proposed", "Retired/Canceled", "unknown"]
+avail_colors = Dict(
+    "Operable/Proposed" => "#2ecc71",
+    "Retired/Canceled"  => "#e74c3c",
+    "unknown"           => "#95a5a6",
+)
+
+# Convert EI MW to % of EIA Operable+Proposed
+avail_pct_summary = copy(avail_summary)
+avail_pct_summary[!, "pct_of_eia"] = [
+    begin
+        st  = r.state
+        idx = findfirst(==(st), states)
+        ref = isnothing(idx) ? 0.0 : eia_op_prop_mw_by_state[idx]
+        ref > 0 ? round(r.total_mw / ref * 100, digits=1) : 0.0
+    end
+    for r in eachrow(avail_pct_summary)
+]
+
+# Total EI % per state (for annotation)
+ei_total_pct_by_state = [
+    begin
+        sub = filter(r -> r.state == st, avail_pct_summary)
+        round(sum(sub.pct_of_eia), digits=1)
+    end
+    for st in states
+]
+
+sp4 = plot(
+    [
+        # ── Stacked bars: EI export by availability as % of EIA Op+Prop ──────
+        [bar(
+            x    = filter(r -> r.avail_label == lbl, avail_pct_summary)[!, "state"],
+            y    = filter(r -> r.avail_label == lbl, avail_pct_summary)[!, "pct_of_eia"],
+            name = "EI — $lbl",
+            marker_color = avail_colors[lbl],
+            text = [string(round(v, digits=1), "%")
+                    for v in filter(r -> r.avail_label == lbl,
+                                    avail_pct_summary)[!, "pct_of_eia"]],
+            textposition = "inside",
+        )
+         for lbl in avail_labels
+         if lbl in unique(avail_pct_summary[!, "avail_label"])]...,
+
+        # ── Scatter: total EI % annotation per state ─────────────────────────
+        scatter(
+            x    = states,
+            y    = ei_total_pct_by_state .+ 3.0,   # offset above bar top
+            mode = "text",
+            text = [string(p, "%") for p in ei_total_pct_by_state],
+            textfont = attr(size=13, color="black"),
+            showlegend = false,
+            name = "Total EI %",
+        ),
+
+        # ── Reference lines ───────────────────────────────────────────────────
+        scatter(
+            x    = states,
+            y    = fill(100.0, length(states)),
+            name = "EIA Operable+Proposed (100%)",
+            mode = "lines+markers",
+            line = attr(color="#2980b9", dash="dash", width=2),
+            marker = attr(symbol="diamond", size=8, color="#2980b9"),
+        ),
+    ],
+    Layout(
+        title       = "Solar EI Update — EI Availability as % of EIA Operable+Proposed",
+        barmode     = "stack",
+        xaxis_title = "State",
+        yaxis_title = "% of EIA Operable+Proposed",
+        yaxis       = attr(range=[0, max(maximum(ei_total_pct_by_state) + 15, 115)]),
+        legend      = attr(orientation="h", y=-0.25),
+        shapes      = [attr(type="line", x0=-0.5, x1=2.5,
+                            y0=100, y1=100,
+                            line=attr(color="#2980b9", dash="dash", width=1))],
+    )
+)
+
 display(sp1)
 display(sp2)
 display(sp3)
+display(sp4)
 
 
 #### WIND ─────────────────────────────────────────────────────────────────────
@@ -1686,9 +1942,9 @@ const WIND_PM_CODES = ["WT", "WS"]   # WT = onshore, WS = offshore
 # ── Column sets ───────────────────────────────────────────────────────────────
 const KEY_COLS_WIND = [
     "name", "bus_number", "bus", "generator_type", "prime_mover_type",
-    "rating", "eia_capacity_mw", "ts_column_name",
-    "lat", "lon", "plant_name",
-    "Plant ID", "Plant Name", "Technology", "Prime Mover Code", "BusName", "kV",
+    "rating", "eia_capacity_mw", "Prime Mover Code", "eia860_status", "available",
+    "ts_column_name", "lat", "lon", "plant_name",
+    "Plant ID", "Plant Name", "Technology", "BusName", "kV",
 ]
 const UNMATCHED_COLS_WIND = [
     "name", "bus_number", "bus", "generator_type", "prime_mover_type",
@@ -1842,7 +2098,6 @@ function summarize_wind(label::String, result::DataFrame)
     unmatched = filter(row ->  ismissing(row["Plant ID"]) &&
                                is_wind(row["generator_type"]), result)
 
-    # ── Diagnose: non-wind EI gens that matched an EIA Wind entry ────────────
     non_wind_matched = filter(row -> !is_wind(row["generator_type"]), matched)
     if nrow(non_wind_matched) > 0
         println("\n⚠️  $label — Non-wind EI gens matched to EIA Wind (misclassification candidates):")
@@ -1865,14 +2120,44 @@ function summarize_wind(label::String, result::DataFrame)
         n = count(==(gt), skipmissing(matched.generator_type))
         println("    $gt: $n")
     end
+    println("─"^60)
+
+    # ── EIA860 status breakdown ───────────────────────────────────────────────
+    if "eia860_status" in names(matched)
+        println("  Matched by eia860_status:")
+        for st in sort(unique(skipmissing(matched.eia860_status)))
+            n  = count(==(st), skipmissing(matched.eia860_status))
+            mw = round(sum(Float64.(coalesce.(
+                    filter(r -> coalesce(r["eia860_status"], "") == st,
+                           matched).rating, 0.0))), digits=1)
+            flag = st == "Operable" ? "✅" : "⚠️ "
+            println("    $flag $st: $n gens | $(mw) MW")
+        end
+        non_op = filter(r -> coalesce(r["eia860_status"], "") != "Operable", matched)
+        if nrow(non_op) > 0
+            println("\n  ⚠️  Non-operable matched generators (", nrow(non_op), "):")
+            show(DataFrames.select(non_op,
+                 intersect(["name", "bus_number", "bus", "generator_type",
+                            "rating", "eia_capacity_mw", "Prime Mover Code",
+                            "eia860_status", "Plant ID", "Plant Name"],
+                           names(non_op))), allrows=true)
+        end
+    end
     println("="^60)
 
+    # ── Reorder columns in stored DataFrames ──────────────────────────────────
+    key_first = intersect(KEY_COLS_WIND, names(matched))
+    rest      = setdiff(names(matched), KEY_COLS_WIND)
+    matched   = DataFrames.select(matched, vcat(key_first, rest))
+
     println("\n📋 $label matched generators (", nrow(matched), " rows):")
-    show(sort(DataFrames.select(matched, KEY_COLS_WIND), "bus_number"), allrows=true)
+    show(sort(DataFrames.select(matched,
+         intersect(KEY_COLS_WIND, names(matched))), "bus_number"), allrows=true)
 
     println("\n⚠️  $label unmatched Wind EI generators (", nrow(unmatched), " rows):")
     nrow(unmatched) > 0 ?
-        show(sort(DataFrames.select(unmatched, UNMATCHED_COLS_WIND), "bus_number"), allrows=true) :
+        show(sort(DataFrames.select(unmatched,
+             intersect(UNMATCHED_COLS_WIND, names(unmatched))), "bus_number"), allrows=true) :
         println("  (none)")
 
     return matched, unmatched
@@ -1958,6 +2243,26 @@ wv_wind_matched = dedup_wind_matched("WV", wv_wind_matched)
 va_wind_mmwg_matched, va_wind_still_unmatched = mmwg_lookup_wind("VA", va_wind_unmatched, mmwg_slim)
 md_wind_mmwg_matched, md_wind_still_unmatched = mmwg_lookup_wind("MD", md_wind_unmatched, mmwg_slim)
 wv_wind_mmwg_matched, wv_wind_still_unmatched = mmwg_lookup_wind("WV", wv_wind_unmatched, mmwg_slim)
+
+skip_generators_md_wind = [
+    ("generator-235530-8580535381", "01BS_U2-073A_235530"),  # Twin Ridges Wind Farm — PA plant on MD border, wrong state
+    ("generator-237507-4366593396", "01CROSSCHOOL_237507"),  # "Luke Mill" in the ext dict is almost certainly a misattribution. Likely a coal plant
+]
+
+skip_names_md_wind = Set(name for (name, _) in skip_generators_md_wind)
+
+# Verify before filtering
+for (gen_name, bus_name) in skip_generators_md_wind
+    match = filter(row -> row["name"] == gen_name, md_wind_mmwg_matched)
+    if nrow(match) == 0
+        @warn "Generator not found in md_wind_matched: $gen_name"
+    else
+        println("✅ Found $gen_name — will remove from MD wind matched")
+    end
+end
+
+md_wind_mmwg_matched = filter(row -> !(row["name"] in skip_names_md_wind), md_wind_mmwg_matched)
+@info "MD wind matched after removing PA border generator: $(nrow(md_wind_mmwg_matched)) rows"
 
 println("\n", "="^60)
 println("📊 Final Wind EI Summary by State")
@@ -2354,6 +2659,8 @@ function build_state_wind_df(label::String,
         ei_capacity_mw  = wind_matched.rating,
         eia_capacity_mw = wind_matched.eia_capacity_mw,
         bus_voltage_kv  = [clean_bus_voltage(x) for x in wind_matched.kV],
+        eia860_status   = wind_matched[!, "eia860_status"],
+        available       = wind_matched[!, "available"],
     )
     s2 = DataFrame(
         source          = fill("EI_MMWG", nrow(mmwg_matched)),
@@ -2368,6 +2675,8 @@ function build_state_wind_df(label::String,
         ei_capacity_mw  = mmwg_matched.rating,
         eia_capacity_mw = fill(missing, nrow(mmwg_matched)),
         bus_voltage_kv  = [clean_bus_voltage(x) for x in mmwg_matched[!, "Bus kV"]],
+        eia860_status   = fill(missing, nrow(mmwg_matched)),
+        available       = mmwg_matched[!, "available"],
     )
     final_df = vcat(s1, s2, cols=:union)
     final_df[!, "state"] .= label
@@ -2378,6 +2687,27 @@ function build_state_wind_df(label::String,
     println("  EI_EIA2PF: ", nrow(s1),
             "  |  EI_MMWG: ", nrow(s2),
             "  |  Total: ", nrow(final_df))
+    println("─"^60)
+
+    # ── Prime mover breakdown — check which column exists ────────────────────
+    pm_col = "prime_mover_type" in names(wind_matched) ? "prime_mover_type" :
+             "Prime Mover Code"  in names(wind_matched) ? "Prime Mover Code" : nothing
+
+    if !isnothing(pm_col)
+        println("  By prime mover ($pm_col):")
+        all_pm = vcat(
+            wind_matched[!, pm_col],
+            nrow(mmwg_matched) > 0 && pm_col in names(mmwg_matched) ?
+                mmwg_matched[!, pm_col] : []
+        )
+        for pm in sort(unique(skipmissing(all_pm)))
+            n_s1 = count(==(pm), skipmissing(wind_matched[!, pm_col]))
+            mw_s1 = round(sum(Float64.(coalesce.(
+                    filter(r -> coalesce(r[pm_col], "") == pm,
+                           wind_matched).rating, 0.0))), digits=1)
+            println("    $pm: $n_s1 gens | $(mw_s1) MW")
+        end
+    end
     println("="^60)
     show(sort(final_df, :bus_id), allrows=true)
     return final_df
@@ -2402,7 +2732,7 @@ function build_eia_only_wind_df(label::String,
         DataFrame(source=String[], gen_name=String[], ts_column_name=Any[],
                   ei_lat=Any[], ei_lon=Any[], eia_lat=Any[], eia_lon=Any[],
                   bus_id=Any[], bus_name=Any[], ei_capacity_mw=Any[],
-                  eia_capacity_mw=Any[], bus_voltage_kv=Any[])
+                  eia_capacity_mw=Any[], eia860_status=Any[], bus_voltage_kv=Any[])
     else
         DataFrame(
             source          = fill("EIA_ONLY", nrow(eia_has_both)),
@@ -2418,6 +2748,7 @@ function build_eia_only_wind_df(label::String,
                                for x in safe_col(eia_has_both, "BusName")],
             ei_capacity_mw  = fill(missing, nrow(eia_has_both)),
             eia_capacity_mw = safe_col(eia_has_both, "eia_capacity_mw"),
+            eia860_status   = safe_col(eia_has_both, "eia860_status"),
             bus_voltage_kv  = [clean_bus_voltage(x)
                                for x in safe_col(eia_has_both, "kV")],
         )
@@ -2429,7 +2760,7 @@ function build_eia_only_wind_df(label::String,
         DataFrame(source=String[], gen_name=String[], ts_column_name=Any[],
                   ei_lat=Any[], ei_lon=Any[], eia_lat=Any[], eia_lon=Any[],
                   bus_id=Any[], bus_name=Any[], ei_capacity_mw=Any[],
-                  eia_capacity_mw=Any[], bus_voltage_kv=Any[])
+                  eia_capacity_mw=Any[], eia860_status=Any[], bus_voltage_kv=Any[])
     else
         DataFrame(
             source          = fill("EIA_MMWG_EXACT", nrow(neither_mmwg_matched)),
@@ -2444,6 +2775,7 @@ function build_eia_only_wind_df(label::String,
             bus_name        = safe_col(neither_mmwg_matched, "Load Flow  Bus Name"),
             ei_capacity_mw  = fill(missing, nrow(neither_mmwg_matched)),
             eia_capacity_mw = safe_col(neither_mmwg_matched, "eia_capacity_mw"),
+            eia860_status   = safe_col(neither_mmwg_matched, "eia860_status"),
             bus_voltage_kv  = [clean_bus_voltage(x)
                                for x in safe_col(neither_mmwg_matched, "Bus kV")],
         )
@@ -2455,7 +2787,7 @@ function build_eia_only_wind_df(label::String,
         DataFrame(source=String[], gen_name=String[], ts_column_name=Any[],
                   ei_lat=Any[], ei_lon=Any[], eia_lat=Any[], eia_lon=Any[],
                   bus_id=Any[], bus_name=Any[], ei_capacity_mw=Any[],
-                  eia_capacity_mw=Any[], bus_voltage_kv=Any[])
+                  eia_capacity_mw=Any[], eia860_status=Any[], bus_voltage_kv=Any[])
     else
         DataFrame(
             source          = fill("EIA_MMWG_FUZZY", nrow(fuzzy_matched)),
@@ -2470,6 +2802,7 @@ function build_eia_only_wind_df(label::String,
             bus_name        = safe_col(fuzzy_matched, "English Name"),
             ei_capacity_mw  = fill(missing, nrow(fuzzy_matched)),
             eia_capacity_mw = safe_col(fuzzy_matched, "eia_capacity_mw"),
+            eia860_status   = safe_col(fuzzy_matched, "eia860_status"),
             bus_voltage_kv  = [clean_bus_voltage(x)
                                for x in safe_col(fuzzy_matched, "Bus kV")],
         )
@@ -2490,6 +2823,20 @@ function build_eia_only_wind_df(label::String,
     println("="^60)
     println("  EIA_ONLY: $(nrow(s3))  |  EIA_MMWG_EXACT: $(nrow(s4))  |",
             "  EIA_MMWG_FUZZY: $(nrow(s5))  |  Total: $(nrow(final_df))")
+    println("─"^60)
+    if nrow(final_df) > 0
+        # eia860 status breakdown
+        println("  By eia860_status:")
+        for st in sort(unique(coalesce.(final_df.eia860_status, "missing")))
+            n  = count(r -> coalesce(string(r.eia860_status), "missing") == st,
+                       eachrow(final_df))
+            mw = round(sum(Float64.(coalesce.(
+                    filter(r -> coalesce(string(r.eia860_status), "missing") == st,
+                           final_df).eia_capacity_mw, 0.0))), digits=1)
+            flag = st == "Operable" ? "✅" : st == "Proposed" ? "🔵" : "⚠️ "
+            println("    $flag $st: $n gens | $(mw) MW")
+        end
+    end
     println("="^60)
     nrow(final_df) > 0 && show(final_df, allrows=true)
 
@@ -2505,10 +2852,24 @@ wv_wind_eia_only = build_eia_only_wind_df("WV", wv_wind_eia_has_both,
 
 # ── W13. Build export DataFrames ──────────────────────────────────────────────
 function build_wind_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::String)
+
+    function derive_available(eia860_status, existing_available)
+        st = coalesce(string(eia860_status), "")
+        if st == "Operable" || st == "Proposed"
+            return true
+        elseif st == "Retired/Canceled"
+            return false
+        else
+            return coalesce(existing_available, missing)
+        end
+    end
+
     ei_out = if nrow(ei_df) == 0
         DataFrame(gen_name=String[], bus_id=Int[], bus_name=String[],
                   lat=Float64[], lon=Float64[], capacity_mw=Any[],
-                  bus_voltage_kv=Float64[], source=String[], state=String[])
+                  bus_voltage_kv=Float64[], eia860_status=Any[],
+                  available=Any[], ts_column_name=Any[],
+                  source=String[], state=String[])
     else
         DataFrame(
             gen_name       = ei_df[!, "gen_name"],
@@ -2519,6 +2880,13 @@ function build_wind_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::S
             capacity_mw    = coalesce.(ei_df[!, "eia_capacity_mw"],
                                        ei_df[!, "ei_capacity_mw"]),
             bus_voltage_kv = ei_df[!, "bus_voltage_kv"],
+            eia860_status  = ei_df[!, "eia860_status"],
+            available      = [derive_available(ei_df[i, "eia860_status"],
+                                  "available" in names(ei_df) ?
+                                  ei_df[i, "available"] : missing)
+                              for i in 1:nrow(ei_df)],
+            ts_column_name = "ts_column_name" in names(ei_df) ?
+                              ei_df[!, "ts_column_name"] : fill(missing, nrow(ei_df)),
             source         = ei_df[!, "source"],
             state          = fill(label, nrow(ei_df)),
         )
@@ -2527,7 +2895,9 @@ function build_wind_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::S
     eia_out = if nrow(eia_only_df) == 0
         DataFrame(gen_name=String[], bus_id=Any[], bus_name=Any[],
                   lat=Any[], lon=Any[], capacity_mw=Any[],
-                  bus_voltage_kv=Any[], source=String[], state=String[])
+                  bus_voltage_kv=Any[], eia860_status=Any[],
+                  available=Any[], ts_column_name=Any[],
+                  source=String[], state=String[])
     else
         DataFrame(
             gen_name       = eia_only_df[!, "gen_name"],
@@ -2537,6 +2907,14 @@ function build_wind_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::S
             lon            = eia_only_df[!, "eia_lon"],
             capacity_mw    = eia_only_df[!, "eia_capacity_mw"],
             bus_voltage_kv = eia_only_df[!, "bus_voltage_kv"],
+            eia860_status  = "eia860_status" in names(eia_only_df) ?
+                              eia_only_df[!, "eia860_status"] : fill(missing, nrow(eia_only_df)),
+            available      = [derive_available(
+                                  "eia860_status" in names(eia_only_df) ?
+                                  eia_only_df[i, "eia860_status"] : missing, missing)
+                              for i in 1:nrow(eia_only_df)],
+            ts_column_name = "ts_column_name" in names(eia_only_df) ?
+                              eia_only_df[!, "ts_column_name"] : fill(missing, nrow(eia_only_df)),
             source         = eia_only_df[!, "source"],
             state          = fill(label, nrow(eia_only_df)),
         )
@@ -2550,10 +2928,18 @@ function build_wind_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::S
     println("  EI generators: $(nrow(ei_out))  |  EIA-only: $(nrow(eia_out))",
             "  |  Total: $(nrow(combined))")
     for src in sort(unique(skipmissing(combined.source)))
-        n   = count(==(src), skipmissing(combined.source))
-        mw  = round(sum(skipmissing(combined[combined.source .== src, "capacity_mw"])),
-                    digits=1)
+        n  = count(==(src), skipmissing(combined.source))
+        mw = round(sum(skipmissing(combined[combined.source .== src, "capacity_mw"])),
+                   digits=1)
         println("    $src: $n gens | $(mw) MW")
+    end
+    println("─"^60)
+    println("  By availability:")
+    for av in [true, false, missing]
+        n = count(r -> isequal(r.available, av), eachrow(combined))
+        n == 0 && continue
+        av_str = ismissing(av) ? "missing" : string(av)
+        println("    available=$av_str: $n gens")
     end
     println("="^60)
     return combined
@@ -2622,12 +3008,12 @@ end
 println("█"^70)
 
 # ── W14. Wind overlap audit ───────────────────────────────────────────────────
-va_wind_dups = audit_plant_overlap("VA", va_wind_matched, va_wind_mmwg_matched,
-    va_wind_eia_has_both, va_wind_neither_mmwg, va_wind_fuzzy_matched, tech_label="Wind")
-md_wind_dups = audit_plant_overlap("MD", md_wind_matched, md_wind_mmwg_matched,
-    md_wind_eia_has_both, md_wind_neither_mmwg, md_wind_fuzzy_matched, tech_label="Wind")
-wv_wind_dups = audit_plant_overlap("WV", wv_wind_matched, wv_wind_mmwg_matched,
-    wv_wind_eia_has_both, wv_wind_neither_mmwg, wv_wind_fuzzy_matched, tech_label="Wind")
+# va_wind_dups = audit_plant_overlap("VA", va_wind_matched, va_wind_mmwg_matched,
+#     va_wind_eia_has_both, va_wind_neither_mmwg, va_wind_fuzzy_matched, tech_label="Wind")
+# md_wind_dups = audit_plant_overlap("MD", md_wind_matched, md_wind_mmwg_matched,
+#     md_wind_eia_has_both, md_wind_neither_mmwg, md_wind_fuzzy_matched, tech_label="Wind")
+# wv_wind_dups = audit_plant_overlap("WV", wv_wind_matched, wv_wind_mmwg_matched,
+#     wv_wind_eia_has_both, wv_wind_neither_mmwg, wv_wind_fuzzy_matched, tech_label="Wind")
 
 # ── W15. Write CSVs ───────────────────────────────────────────────────────────
 CSV.write(joinpath(OUTPUT_DIR, "wind_RE_VA_EI_buses.csv"), va_wind_export)
@@ -2755,6 +3141,79 @@ for row in eachrow(wind_comparison)
         println("  • $(row.State): ✅ $(pct)% captured — within ±5% of EIA2PF reference")
     end
 end
+
+# ── Section 3B: Availability comparison — wind ────────────────────────────────
+println("\n\n📊 SECTION 3B — WIND AVAILABILITY COMPARISON")
+println("─"^70)
+println("  EI available          = generators with available=true in export")
+println("  EIA Operable+Proposed = eia860_status == 'Operable' or 'Proposed'")
+println("  EIA Retired           = eia860_status == 'Retired/Canceled'\n")
+
+eia_wind_status = filter(row ->
+    coalesce(row["Prime Mover Code"] in WIND_PM_CODES, false) &&
+    coalesce(row["State"] in ["VA", "MD", "WV"], false),
+    eia_expanded)
+
+safe_sum_mw(col) = round(sum(Float64.(coalesce.(col, 0.0))), digits=1)
+
+wind_avail_comparison = DataFrame(
+    State          = String[],
+    ei_avail_n     = Int[],
+    ei_avail_mw    = Float64[],
+    eia_op_prop_n  = Int[],
+    eia_op_prop_mw = Float64[],
+    eia_retired_n  = Int[],
+    eia_retired_mw = Float64[],
+    diff_mw        = Float64[],
+    pct_captured   = Float64[],
+)
+
+for (label, df) in [("VA", va_wind_export), ("MD", md_wind_export), ("WV", wv_wind_export)]
+    ei_avail    = filter(r -> coalesce(r.available, false) == true, df)
+    ei_avail_mw = safe_sum_mw(ei_avail.capacity_mw)
+
+    eia_op_prop = filter(r -> coalesce(r["State"] == label, false) &&
+                              coalesce(r["eia860_status"] in ["Operable", "Proposed"], false),
+                         eia_wind_status)
+    eia_op_prop_mw = nrow(eia_op_prop) > 0 ?
+        safe_sum_mw([Float64(x) for x in skipmissing(eia_op_prop.eia_capacity_mw)]) : 0.0
+
+    eia_retired = filter(r -> coalesce(r["State"] == label, false) &&
+                              coalesce(r["eia860_status"] == "Retired/Canceled", false),
+                          eia_wind_status)
+    eia_ret_mw = nrow(eia_retired) > 0 ?
+        safe_sum_mw([Float64(x) for x in skipmissing(eia_retired.eia_capacity_mw)]) : 0.0
+
+    diff = round(ei_avail_mw - eia_op_prop_mw, digits=1)
+    pct  = eia_op_prop_mw > 0 ?
+           round(ei_avail_mw / eia_op_prop_mw * 100, digits=1) : 0.0
+
+    push!(wind_avail_comparison, (label,
+        nrow(ei_avail),    ei_avail_mw,
+        nrow(eia_op_prop), eia_op_prop_mw,
+        nrow(eia_retired), eia_ret_mw,
+        diff, pct))
+end
+
+show(wind_avail_comparison, allrows=true)
+
+println("\n\n  ⚠️  Notes on availability gaps:")
+for row in eachrow(wind_avail_comparison)
+    pct  = row.pct_captured
+    diff = row.diff_mw
+    if pct < 95.0
+        println("  • $(row.State): capturing $(pct)% of Operable+Proposed — missing ~$(abs(diff)) MW")
+    elseif pct > 105.0
+        println("  • $(row.State): capturing $(pct)% — OVER Operable+Proposed by $(diff) MW")
+    else
+        println("  • $(row.State): ✅ $(pct)% of Operable+Proposed captured — within ±5%")
+    end
+end
+
+# Add after the WV notes in Section 3B
+println("  ℹ️  WV note: New Creek Wind (generator-315604, 102.5 MW) is a confirmed")
+println("      operable plant (EIA Plant 60132) matched via MMWG with missing EIA status.")
+println("      Actual status: Operable. Inflates WV pct_captured above 100%.")
 
 # ── Section 4: Breakdown by source ───────────────────────────────────────────
 println("\n\n📋 BREAKDOWN BY MATCH SOURCE")
@@ -2923,6 +3382,186 @@ wp3 = plot(
     )
 )
 
+# ── Wind sp4: availability % plot ────────────────────────────────────────────
+wind_avail_summary = combine(
+    groupby(all_wind_updates, ["state", "available"]),
+    "capacity_mw" => (x -> sum(skipmissing(x))) => "total_mw",
+    nrow => "n_generators",
+)
+wind_avail_summary[!, "avail_label"] = [
+    ismissing(r.available) ? "unknown" : r.available ? "Operable/Proposed" : "Retired/Canceled"
+    for r in eachrow(wind_avail_summary)
+]
+
+eia_wind_op_prop_mw_by_state = [
+    begin
+        sub = filter(r -> coalesce(r["State"] == st, false) &&
+                          coalesce(r["eia860_status"] in ["Operable", "Proposed"], false),
+                     eia_wind_status)
+        nrow(sub) > 0 ? sum(Float64.(coalesce.(sub.eia_capacity_mw, 0.0))) : 0.0
+    end
+    for st in states
+]
+
+wind_avail_pct_summary = copy(wind_avail_summary)
+wind_avail_pct_summary[!, "pct_of_eia"] = [
+    begin
+        st  = r.state
+        idx = findfirst(==(st), states)
+        ref = isnothing(idx) ? 0.0 : eia_wind_op_prop_mw_by_state[idx]
+        ref > 0 ? round(r.total_mw / ref * 100, digits=1) : 0.0
+    end
+    for r in eachrow(wind_avail_pct_summary)
+]
+
+wind_total_pct_by_state = [
+    round(sum(filter(r -> r.state == st, wind_avail_pct_summary).pct_of_eia), digits=1)
+    for st in states
+]
+
+# ── Wind sp4: availability % plot ────────────────────────────────────────────
+
+# ── Define locally in case solar section is not in scope ─────────────────────
+wind_avail_labels = ["Operable/Proposed", "Retired/Canceled", "unknown"]
+wind_avail_colors = Dict(
+    "Operable/Proposed" => "#2ecc71",
+    "Retired/Canceled"  => "#e74c3c",
+    "unknown"           => "#95a5a6",
+)
+
+wind_avail_summary = combine(
+    groupby(all_wind_updates, ["state", "available"]),
+    "capacity_mw" => (x -> sum(skipmissing(x))) => "total_mw",
+    nrow => "n_generators",
+)
+wind_avail_summary[!, "avail_label"] = [
+    ismissing(r.available) ? "unknown" : r.available ? "Operable/Proposed" : "Retired/Canceled"
+    for r in eachrow(wind_avail_summary)
+]
+
+eia_wind_op_prop_mw_by_state = [
+    begin
+        sub = filter(r -> coalesce(r["State"] == st, false) &&
+                          coalesce(r["eia860_status"] in ["Operable", "Proposed"], false),
+                     eia_wind_status)
+        nrow(sub) > 0 ?
+            sum(Float64.(coalesce.(sub.eia_capacity_mw, 0.0))) : 0.0
+    end
+    for st in states
+]
+
+wind_avail_pct_summary = copy(wind_avail_summary)
+wind_avail_pct_summary[!, "pct_of_eia"] = [
+    begin
+        st  = r.state
+        idx = findfirst(==(st), states)
+        ref = isnothing(idx) ? 0.0 : eia_wind_op_prop_mw_by_state[idx]
+        ref > 0 ? round(r.total_mw / ref * 100, digits=1) : 0.0
+    end
+    for r in eachrow(wind_avail_pct_summary)
+]
+
+wind_total_pct_by_state = [
+    round(sum(filter(r -> r.state == st, wind_avail_pct_summary).pct_of_eia), digits=1)
+    for st in states
+]
+
+println("wind_avail_pct_summary rows: ", nrow(wind_avail_pct_summary))
+println("wind_total_pct_by_state: ", wind_total_pct_by_state)
+
+wp4 = plot(
+    [
+        [bar(
+            x    = filter(r -> r.avail_label == lbl, wind_avail_pct_summary)[!, "state"],
+            y    = filter(r -> r.avail_label == lbl, wind_avail_pct_summary)[!, "pct_of_eia"],
+            name = "EI — $lbl",
+            marker_color = wind_avail_colors[lbl],
+            text = [string(round(v, digits=1), "%")
+                    for v in filter(r -> r.avail_label == lbl,
+                                    wind_avail_pct_summary)[!, "pct_of_eia"]],
+            textposition = "inside",
+        )
+         for lbl in wind_avail_labels
+         if lbl in unique(wind_avail_pct_summary[!, "avail_label"])]...,
+
+        scatter(
+            x    = states,
+            y    = wind_total_pct_by_state .+ 3.0,
+            mode = "text",
+            text = [string(p, "%") for p in wind_total_pct_by_state],
+            textfont = attr(size=13, color="black"),
+            showlegend = false,
+        ),
+
+        scatter(
+            x    = states,
+            y    = fill(100.0, length(states)),
+            name = "EIA Operable+Proposed (100%)",
+            mode = "lines+markers",
+            line = attr(color="#2980b9", dash="dash", width=2),
+            marker = attr(symbol="diamond", size=8, color="#2980b9"),
+        ),
+    ],
+    Layout(
+        title       = "Wind EI Update — EI Availability as % of EIA Operable+Proposed",
+        barmode     = "stack",
+        xaxis_title = "State",
+        yaxis_title = "% of EIA Operable+Proposed",
+        yaxis       = attr(range=[0, max(maximum(wind_total_pct_by_state) + 15, 115)]),
+        legend      = attr(orientation="h", y=-0.25),
+        shapes      = [attr(type="line", x0=-0.5, x1=2.5,
+                            y0=100, y1=100,
+                            line=attr(color="#2980b9", dash="dash", width=1))],
+    )
+)
+
 display(wp1)
 display(wp2)
 display(wp3)
+display(wp4)
+
+# ── Collect all EIA uids already consumed by solar + wind pipelines ──────────
+function collect_consumed_uids(matched_df::DataFrame)
+    "uid" in names(matched_df) || return Set{String}()
+    return Set{String}(string(u) for u in skipmissing(matched_df[!, "uid"]))
+end
+
+consumed_uids = union(
+    # Solar: EI → EIA2PF matched
+    collect_consumed_uids(va_solar_matched),
+    collect_consumed_uids(md_solar_matched),
+    collect_consumed_uids(wv_solar_matched),
+    # Wind: EI → EIA2PF matched
+    collect_consumed_uids(va_wind_matched),
+    collect_consumed_uids(md_wind_matched),
+    collect_consumed_uids(wv_wind_matched),
+    # EIA-only solar: has BusID+BusName
+    collect_consumed_uids(va_eia_has_both),
+    collect_consumed_uids(md_eia_has_both),
+    collect_consumed_uids(wv_eia_has_both),
+    # EIA-only solar: neither → MMWG exact
+    collect_consumed_uids(va_neither_mmwg_matched),
+    collect_consumed_uids(md_neither_mmwg_matched),
+    collect_consumed_uids(wv_neither_mmwg_matched),
+    # EIA-only solar: fuzzy + location assigned
+    collect_consumed_uids(va_fuzzy_matched),
+    collect_consumed_uids(md_fuzzy_matched),
+    collect_consumed_uids(wv_fuzzy_matched),
+    # EIA-only wind: has BusID+BusName
+    collect_consumed_uids(va_wind_eia_has_both),
+    collect_consumed_uids(md_wind_eia_has_both),
+    collect_consumed_uids(wv_wind_eia_has_both),
+    # EIA-only wind: neither → MMWG exact
+    collect_consumed_uids(va_wind_neither_mmwg),
+    collect_consumed_uids(md_wind_neither_mmwg),
+    collect_consumed_uids(wv_wind_neither_mmwg),
+    # EIA-only wind: fuzzy + location assigned
+    collect_consumed_uids(va_wind_fuzzy_matched),
+    collect_consumed_uids(md_wind_fuzzy_matched),
+    collect_consumed_uids(wv_wind_fuzzy_matched),
+)
+
+println("\n✅ Total EIA uids consumed by renewables pipeline: ", length(consumed_uids))
+consumed_uids = setdiff(consumed_uids, freed_uids)
+
+println("✅ Final consumed uids (after freeing skipped): ", length(consumed_uids))
