@@ -69,6 +69,7 @@ MD_ei_gens = CSV.read(joinpath(homedir(), "Downloads", "maryland_resources.csv")
 WV_ei_gens = CSV.read(joinpath(homedir(), "Downloads", "west_virginia_resources.csv"), DataFrame)
 
 AR_ei_gens = CSV.read(joinpath(homedir(), "Downloads", "arkansas_resources.csv"), DataFrame)
+IL_ei_gens = CSV.read(joinpath(homedir(), "Downloads", "illinois_resources.csv"), DataFrame)
 
 # ── Apply manual prime mover corrections directly on EI source data ───────────
 for (label, df) in [("VA", VA_ei_gens), ("MD", MD_ei_gens), ("WV", WV_ei_gens)]
@@ -448,16 +449,23 @@ const OUTPUT_COLS = [
 va_ei_eia_result   = match_ei_to_eia(VA_ei_gens, eia_expanded, "VA")
 md_ei_eia_result   = match_ei_to_eia(MD_ei_gens, eia_expanded, "MD")
 wv_ei_eia_result   = match_ei_to_eia(WV_ei_gens, eia_expanded, "WV")
+
+il_ei_eia_result   = match_ei_to_eia(IL_ei_gens, eia_expanded, "IL")
  
 # ── EIA2PF matched/unmatched solar ───────────────────────────────────────────
 va_solar_matched,   va_solar_unmatched   = summarize_solar("VA", va_ei_eia_result)
 md_solar_matched,   md_solar_unmatched   = summarize_solar("MD", md_ei_eia_result)
 wv_solar_matched,   wv_solar_unmatched   = summarize_solar("WV", wv_ei_eia_result)
 
+il_solar_matched,   il_solar_unmatched   = summarize_solar("IL", il_ei_eia_result)
+
+
 # ── MMWG fallback for unmatched solar ────────────────────────────────────────
 va_mmwg_matched,   va_still_unmatched   = mmwg_lookup("VA", va_solar_unmatched, mmwg_slim)
 md_mmwg_matched,   md_still_unmatched   = mmwg_lookup("MD", md_solar_unmatched, mmwg_slim)
 wv_mmwg_matched,   wv_still_unmatched   = mmwg_lookup("WV", wv_solar_unmatched, mmwg_slim)
+
+il_mmwg_matched,   il_still_unmatched   = mmwg_lookup("IL", il_solar_unmatched, mmwg_slim)
 
 println("\n", "="^60)
 println("📊 Final Summary by State")
@@ -466,6 +474,7 @@ for (label, matched, mmwg, unmatched) in [
     ("VA", va_solar_matched, va_mmwg_matched, va_still_unmatched),
     ("MD", md_solar_matched, md_mmwg_matched, md_still_unmatched),
     ("WV", wv_solar_matched, wv_mmwg_matched, wv_still_unmatched),
+    ("IL", il_solar_matched, il_mmwg_matched, il_still_unmatched)
 ]
     println("\n$label:")
     println("  ✅ EIA2PF matched:      ", nrow(matched))
@@ -669,6 +678,10 @@ md_eia_unmatched, md_eia_has_both, md_eia_neither =
     find_eia_unmatched("MD", md_ei_eia_result, eia_expanded, "MD")
 wv_eia_unmatched, wv_eia_has_both, wv_eia_neither =
     find_eia_unmatched("WV", wv_ei_eia_result, eia_expanded, "WV")
+
+il_eia_unmatched, il_eia_has_both, il_eia_neither =
+    find_eia_unmatched("IL", il_ei_eia_result, eia_expanded, "IL")
+        
 
 va_eia_unmatched = dedup_eia_has_both("VA", va_eia_unmatched)
 md_eia_unmatched = dedup_eia_has_both("MD", md_eia_unmatched)
@@ -1317,7 +1330,7 @@ md_export = build_export_df(md_solar, md_solar_eia_only, "MD")
 wv_export = build_export_df(wv_solar, wv_solar_eia_only, "WV")
 
 skip_generators_va = [
-    ("generator-316283-6731062071", "AC2-100 C_316283"),    # Row 2:  Hybrid plant + CC + 30km gap
+    # ("generator-316283-6731062071", "AC2-100 C_316283"),    # Row 2:  Hybrid plant + CC + 30km gap
     ("generator-316237-3396887655", "AB2-079_GEN_316237"),  # Row 13: CC + large cap mismatch (21 vs 60 MW)
     ("generator-316169-692393578",  "AC1-164 GEN_316169"),  # Row 15: CC + large cap mismatch (342 vs 175 MW)
     ("generator-270197-3774998538", "AC1-083 GEN_270197"),  # Row 31: Large cap mismatch (346 vs 120 MW)
