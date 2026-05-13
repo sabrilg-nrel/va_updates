@@ -24,7 +24,7 @@ using TimeSeries
 using Dates
 using PowerSystems
 using Random
-Random.seed!(42)  # Replace 42 with any fixed integer seed
+Random.seed!(42)  
 
 
 const PSY = PowerSystems
@@ -154,7 +154,10 @@ const STATE_REGION = Dict(
     "VA" => "PJM",
     "MD" => "PJM",
     "WV" => "PJM",
+    "IL" => "MISO",   # ← add
+    "AR" => "MISO",   # ← add
 )
+
 # ── 4. Parse BusID — unique() collapses repeated circuits to same bus ─────────
 function parse_all_busids(x)
     ismissing(x) && return Int[]
@@ -195,6 +198,8 @@ println("EIA slim rows: ", nrow(eia_slim), " → expanded: ", nrow(eia_expanded)
 @assert nrow(eia_expanded) == nrow(eia_slim) "BUG: expansion changed row count — multi-bus entries not collapsed correctly"
 
 include("/Users/sabrilg/Documents/GitHub/va_updates/EIA860_comparison.jl")
+
+#CSV.write(joinpath("eia_expanded.csv"), eia_expanded)
 
 # ── 6. Column sets ────────────────────────────────────────────────────────────
 const KEY_COLS = [
@@ -297,6 +302,63 @@ const MANUAL_OVERRIDES = Dict{Int, Union{Int, Missing}}(
     #Manual override due to not exitence of the assigned bus on on EI system
     66276 => 235486,     # Blake Solar Plant -> Millville 138 kV
     64848 => 235101,     #Bedington Energy Facility, LLC - > Bedington 500 kV
+
+
+    ######## AR ##################
+    67075 => 338804,    # Forgeview Solar (200 MW) → Blytheville North 161 kV (5.44 km)
+    67076 => 338075,    # Flat Fork Solar (200 MW) → FLAT FORK S 230 kV (3.79 km, name match)
+    67038 => 338063,    # Quartz Solar (135 MW) → CROSS COUNTY 161 kV (0.2 km, county name match)
+    66625 => 338644,    # Prairie Mist Solar (109.2 MW) → 3MIST# 115 kV (5.05 km, name match)
+    66851 => 337590,    # Fairview Solar AR (75 MW) → 3HAMBURG 115 kV (20.38 km, Ashley County seat)
+    59947 => 338825,    # SR Camden (12 MW, Operable) → CAMDEN-W# 115 kV (11.28 km, name match)
+
+    # Manual override due to not exitence of the assigned bus on on EI system
+    62617 => 338046, 
+    63766 => 338046,    # Happy Solar 1 (95 MW, Operable) → 5SEARCY.S 161 kV (8.48 km, White County AR)
+    65482 => 338160,
+
+    ####### IL ##################
+    65301 => 272516,    # Steward Creek Solar Phase 1 (1200 MW, Proposed) → STEWARD 138 kV (11.72 km)
+                    # ⚠️ 138 kV may be undersized for 1200 MW — verify final interconnection voltage
+    66624 => 348408,    # Double Back Diamond (592.8 MW, Operable) → 4VIRDEN 138 kV (7.23 km)
+                    # ⚠️ 138 kV may be undersized for ~600 MW — if feasibility issues arise, try 7AUSTIN 345 kV (347955, 20.26 km)
+    65446 => 270695,    # Owens Creek Solar (500 MW, Proposed) → CHERRY VA 345 kV (22.65 km)
+                    # ⚠️ 138 kV at ESS B200 (271581, 6.67 km) is closer but likely undersized for 500 MW
+    69025 => 348294,    # Pulaski Solar (417.4 MW, Proposed) → 7MASS 345 kV (10.21 km, Massac County adj. to Pulaski)
+                    # ⚠️ If 345 kV causes issues, fallback: 5JOPPA T3 161 kV (347335, same distance)
+    66820 => 247712,    # River Ferry Solar 1 (165.3 MW, Operable) → 05SULLIVAN 345 kV (7.88 km, Clark County IL)
+    67986 => 347850,    # Meadow Springs Renewable Energy (150 MW, Proposed) → 7NORRIS 345 kV (0.37 km, White County IL)
+    68880 => 347288,    # Pleasantville Solar Park (150 MW, Proposed) → 7IPAVA 345 kV (2.2 km, Fulton County IL)
+    66703 => 347010,    # Austin Creek Solar (140 MW, Proposed) → 7HERLEMAN 345 kV (10.22 km, Adams County IL)
+                        # Alternative: 4MARBHD N 138 kV (347515, 7.27 km) if 345 kV causes issues
+    67991 => 347401,    # Cooks Mill PV I (99 MW, Proposed) → 4ARLAND 138 kV (5.65 km, Coles County IL)
+                        # Alternative: 4MATOON E (347562, same distance) if Arland has capacity issues
+    67993 => 348836,    # Crooked Creek PV I (99 MW, Proposed) → 4WSALEM 1 138 kV (3.29 km, Marion County IL)                    
+    68085 => 271432,    # Red Maple LRE (95 MW, Proposed) → CREGO RD 138 kV (6.0 km, DeKalb County IL)
+    67662 => 348974,    # Payton (70 MW, Proposed) → 4EKEWANEE S 138 kV (0.62 km, Henry County IL)
+    66632 => 348291,    # Kimmel Road Solar (50 MW, Operable) → 4ST JOHN 138 kV (0.64 km, Perry County IL)
+    66633 => 349675,    # Salt Creek Township Solar (50 MW, Proposed) → 4MASON_IL 138 kV (1.93 km, Mason County IL)
+    68929 => 348833,    # Ruby Solar (50 MW, Proposed) → 4SCENTRLA S 138 kV (10.79 km, Clinton County IL)
+    66631 => 348946,    # Earp Solar (35 MW, Operable) → 4GMON_BVD 1 138 kV (22.98 km, Warren County IL)
+    66630 => 348925,    # Richland Township Solar (35 MW, Proposed) → 4WOODHALL 138 kV (6.93 km, Marshall County IL)
+    66826 => 347297,    # Prairie Creek Solar (30 MW, Operable) → 4JACKSNVL 138 kV (8.75 km, Morgan County IL)
+    63845 => 348934,    # DePue Holdings (20 MW, Operable) → 4HENNEPIN N 138 kV (4.31 km, Bureau County IL)
+    
+    # Manual override due to not exitence of the assigned bus on on EI system
+    63838 => 271420,    # High Point Solar LLC (100 MW) → ECOGROVE 138 kV (7.91 km, Stephenson County IL)
+    65013 => 271972,    # Marengo Solar (2 MW) → MARENGO 138 kV (2.39 km, McHenry County IL)
+    65349 => 347540,    # Mulligan Solar (70 MW) → 4SGCK1 H1 138 kV (1.11 km, Logan County IL)
+    68147 => 346887,    # Coffeen Solar BESS (44.2 MW) → 4COFFEN-N 138 kV (1.15 km, Montgomery County IL)
+    68148 => 350207,    # Baldwin Solar BESS (68.4 MW) → 4BALDWINSIPC 138 kV (0.52 km, Randolph County IL)
+    64536 => 347338,    # Prairie Solar LLC (150 MW) → 7HRWF J468 345 kV (1.08 km, Champaign County IL)
+    65401 => 347831,    # Newton Solar BESS LLC (52 MW) → 4NEWTON 138 kV (0.46 km, Jasper County IL)
+    67253 => 275165,    # Cherry Valley (12.5 MW) → CHERRY VA;1M 138 kV (4.62 km, Boone County IL)
+    67937 => 347463,    # Flora Solar (125 MW) → 4TANNER 138 kV (12.37 km, Clay County IL)
+                        # ⚠️ No closer 138 kV bus available — nearest is 12.37 km
+    67972 => 347789,    # Eldorado Solar I (150 MW) → 4MUDDY 138 kV (11.1 km, Saline County IL)
+                        # ⚠️ No closer 138 kV bus in rural Saline County — nearest is 11.1 km
+    67642 => 348307,    # Skyline (5 MW, Operable) → 4TAYLR NE 138 kV (0.70 km, Christian County IL)
+                        # Original bus 260069 (SKYLINE, 13.8 kV) does not exist in EI model
     # add more rows here...
 )
 # ── 7. Match EI → EIA2PF ─────────────────────────────────────────────────────
@@ -329,7 +391,7 @@ function match_ei_to_eia(ei_gens::DataFrame, eia_expanded::DataFrame, state::Str
     println("  ✅ Matched to EIA2PF bus:    ", nrow(matched))
     println("  ⚠️  No EIA2PF bus match:      ", nrow(unmatched))
     println("─"^60)
-    println("Solar generators in $state EI:")
+    println("Solar generators in $state EI (does not include misclassified gens):")
     println("  Total:        ", count(==("Solar"), ei.generator_type))
     println("  ✅ Matched:   ", count(==("Solar"), matched.generator_type))
     println("  ⚠️  Unmatched: ", count(==("Solar"), unmatched.generator_type))
@@ -450,6 +512,7 @@ va_ei_eia_result   = match_ei_to_eia(VA_ei_gens, eia_expanded, "VA")
 md_ei_eia_result   = match_ei_to_eia(MD_ei_gens, eia_expanded, "MD")
 wv_ei_eia_result   = match_ei_to_eia(WV_ei_gens, eia_expanded, "WV")
 
+ar_ei_eia_result   = match_ei_to_eia(AR_ei_gens, eia_expanded, "AR")
 il_ei_eia_result   = match_ei_to_eia(IL_ei_gens, eia_expanded, "IL")
  
 # ── EIA2PF matched/unmatched solar ───────────────────────────────────────────
@@ -457,7 +520,8 @@ va_solar_matched,   va_solar_unmatched   = summarize_solar("VA", va_ei_eia_resul
 md_solar_matched,   md_solar_unmatched   = summarize_solar("MD", md_ei_eia_result)
 wv_solar_matched,   wv_solar_unmatched   = summarize_solar("WV", wv_ei_eia_result)
 
-il_solar_matched,   il_solar_unmatched   = summarize_solar("IL", il_ei_eia_result)
+ar_solar_matched, ar_solar_unmatched = summarize_solar("AR", ar_ei_eia_result) #checked OK all solar miss classified
+il_solar_matched, il_solar_unmatched = summarize_solar("IL", il_ei_eia_result) #checked OK all solar miss classified
 
 
 # ── MMWG fallback for unmatched solar ────────────────────────────────────────
@@ -465,7 +529,8 @@ va_mmwg_matched,   va_still_unmatched   = mmwg_lookup("VA", va_solar_unmatched, 
 md_mmwg_matched,   md_still_unmatched   = mmwg_lookup("MD", md_solar_unmatched, mmwg_slim)
 wv_mmwg_matched,   wv_still_unmatched   = mmwg_lookup("WV", wv_solar_unmatched, mmwg_slim)
 
-il_mmwg_matched,   il_still_unmatched   = mmwg_lookup("IL", il_solar_unmatched, mmwg_slim)
+ar_mmwg_matched, ar_still_unmatched  = mmwg_lookup("AR", ar_solar_unmatched, mmwg_slim)
+il_mmwg_matched,   il_still_unmatched   = mmwg_lookup("IL", il_solar_unmatched, mmwg_slim)# Hickory confirmed solar Hickory Solar 39.133126	-90.366017
 
 println("\n", "="^60)
 println("📊 Final Summary by State")
@@ -474,7 +539,8 @@ for (label, matched, mmwg, unmatched) in [
     ("VA", va_solar_matched, va_mmwg_matched, va_still_unmatched),
     ("MD", md_solar_matched, md_mmwg_matched, md_still_unmatched),
     ("WV", wv_solar_matched, wv_mmwg_matched, wv_still_unmatched),
-    ("IL", il_solar_matched, il_mmwg_matched, il_still_unmatched)
+    ("AR", ar_solar_matched, ar_mmwg_matched, ar_still_unmatched),
+    ("IL", il_solar_matched, il_mmwg_matched, il_still_unmatched),
 ]
     println("\n$label:")
     println("  ✅ EIA2PF matched:      ", nrow(matched))
@@ -679,6 +745,8 @@ md_eia_unmatched, md_eia_has_both, md_eia_neither =
 wv_eia_unmatched, wv_eia_has_both, wv_eia_neither =
     find_eia_unmatched("WV", wv_ei_eia_result, eia_expanded, "WV")
 
+ar_eia_unmatched, ar_eia_has_both, ar_eia_neither =
+    find_eia_unmatched("AR", ar_ei_eia_result, eia_expanded, "AR")    
 il_eia_unmatched, il_eia_has_both, il_eia_neither =
     find_eia_unmatched("IL", il_ei_eia_result, eia_expanded, "IL")
         
@@ -686,16 +754,24 @@ il_eia_unmatched, il_eia_has_both, il_eia_neither =
 va_eia_unmatched = dedup_eia_has_both("VA", va_eia_unmatched)
 md_eia_unmatched = dedup_eia_has_both("MD", md_eia_unmatched)
 wv_eia_unmatched = dedup_eia_has_both("WV", wv_eia_unmatched)
+ar_eia_unmatched = dedup_eia_has_both("AR", ar_eia_unmatched)
+il_eia_unmatched = dedup_eia_has_both("IL", il_eia_unmatched)
 
 va_eia_has_both  = dedup_eia_has_both("VA", va_eia_has_both)
 md_eia_has_both  = dedup_eia_has_both("MD", md_eia_has_both)
 wv_eia_has_both  = dedup_eia_has_both("WV", wv_eia_has_both)
+ar_eia_has_both  = dedup_eia_has_both("AR", ar_eia_has_both)
+il_eia_has_both  = dedup_eia_has_both("IL", il_eia_has_both)
 
 # ── 12b. Patch has_both: override bad EIA buses BEFORE build_eia_only_solar_df
 println("\n── Applying MANUAL_OVERRIDES to eia_has_both (EIA_ONLY source) ──")
 va_eia_has_both, _, _ = apply_overrides_to_eia_df("VA", va_eia_has_both, :eia_has_both, mmwg_slim, MANUAL_OVERRIDES)
 md_eia_has_both, _, _ = apply_overrides_to_eia_df("MD", md_eia_has_both, :eia_has_both, mmwg_slim, MANUAL_OVERRIDES)
 wv_eia_has_both, _, _ = apply_overrides_to_eia_df("WV", wv_eia_has_both, :eia_has_both, mmwg_slim, MANUAL_OVERRIDES)
+
+ar_eia_has_both, _, _ = apply_overrides_to_eia_df("AR", ar_eia_has_both, :eia_has_both, mmwg_slim, MANUAL_OVERRIDES)
+il_eia_has_both, _, _ = apply_overrides_to_eia_df("IL", il_eia_has_both, :eia_has_both, mmwg_slim, MANUAL_OVERRIDES)
+
 
 
 # ── 13. Match EIA "neither" plants to MMWG by Plant Name ≈ English Name ───────
@@ -748,10 +824,18 @@ function match_neither_to_mmwg(label::String, neither::DataFrame, mmwg_slim::Dat
     ]
 
     println("\n  ✅ Matched (", nrow(matches), " rows):")
-    show(DataFrames.select(matches, MATCH_COLS), allrows=true)
+    if nrow(matches) > 0
+        show(DataFrames.select(matches, MATCH_COLS), allrows=true)
+    else
+        println("  (none)")
+    end
 
     println("\n  ⚠️  Still no match (", nrow(no_match), " rows):")
-    show(DataFrames.select(no_match, NO_MATCH_COLS), allrows=true)
+    if nrow(no_match) > 0
+        show(DataFrames.select(no_match, NO_MATCH_COLS), allrows=true)
+    else
+        println("  (none)")
+    end
 
     return matches, no_match
 end
@@ -772,13 +856,20 @@ md_neither_mmwg_matched, md_neither_still_unmatched =
 wv_neither_mmwg_matched, wv_neither_still_unmatched =
     match_neither_to_mmwg("WV", wv_eia_neither, mmwg_slim)
 
+ar_neither_mmwg_matched, ar_neither_still_unmatched =
+    match_neither_to_mmwg("AR", ar_eia_neither, mmwg_slim)
+il_neither_mmwg_matched, il_neither_still_unmatched =
+    match_neither_to_mmwg("IL", il_eia_neither, mmwg_slim)
+
+
 # ── 13b. Patch neither_mmwg_matched: override bad MMWG buses BEFORE fuzzy ────
 println("\n── Applying MANUAL_OVERRIDES to neither_mmwg_matched (EIA_MMWG_EXACT source) ──")
 va_neither_mmwg_matched, _, _ = apply_overrides_to_eia_df("VA", va_neither_mmwg_matched, :neither_mmwg, mmwg_slim, MANUAL_OVERRIDES)
 md_neither_mmwg_matched, _, _ = apply_overrides_to_eia_df("MD", md_neither_mmwg_matched, :neither_mmwg, mmwg_slim, MANUAL_OVERRIDES)
 wv_neither_mmwg_matched, _, _ = apply_overrides_to_eia_df("WV", wv_neither_mmwg_matched, :neither_mmwg, mmwg_slim, MANUAL_OVERRIDES)
 
-
+ar_neither_mmwg_matched, _, _ = apply_overrides_to_eia_df("AR", ar_neither_mmwg_matched, :neither_mmwg, mmwg_slim, MANUAL_OVERRIDES)
+il_neither_mmwg_matched, _, _ = apply_overrides_to_eia_df("IL", il_neither_mmwg_matched, :neither_mmwg, mmwg_slim, MANUAL_OVERRIDES)
 
 # ── 15. Fuzzy name match for still-unmatched plants ───────────────────────────
 function fuzzy_match_to_mmwg(label::String, still_unmatched::DataFrame, mmwg_slim::DataFrame;
@@ -947,10 +1038,18 @@ md_fuzzy_matched, md_fuzzy_unmatched =
 wv_fuzzy_matched, wv_fuzzy_unmatched =
     fuzzy_match_to_mmwg("WV", wv_neither_still_unmatched, mmwg_slim)
 
+ar_fuzzy_matched, ar_fuzzy_unmatched =
+    fuzzy_match_to_mmwg("AR", ar_neither_still_unmatched, mmwg_slim)
+il_fuzzy_matched, il_fuzzy_unmatched =
+    fuzzy_match_to_mmwg("IL", il_neither_still_unmatched, mmwg_slim)
+
 # ── 16b. Apply manual overrides ───────────────────────────────────────────────
 va_fuzzy_matched = apply_manual_overrides!(va_fuzzy_matched, va_fuzzy_unmatched, mmwg_slim, MANUAL_OVERRIDES)
 md_fuzzy_matched = apply_manual_overrides!(md_fuzzy_matched, md_fuzzy_unmatched, mmwg_slim, MANUAL_OVERRIDES)
 wv_fuzzy_matched = apply_manual_overrides!(wv_fuzzy_matched, wv_fuzzy_unmatched, mmwg_slim, MANUAL_OVERRIDES)
+
+ar_fuzzy_matched = apply_manual_overrides!(ar_fuzzy_matched, ar_fuzzy_unmatched, mmwg_slim, MANUAL_OVERRIDES)
+il_fuzzy_matched = apply_manual_overrides!(il_fuzzy_matched, il_fuzzy_unmatched, mmwg_slim, MANUAL_OVERRIDES)
 
 # ── 16c. Auto-assign closest bus by location for small plants ─────────────────
 """
@@ -1052,6 +1151,10 @@ va_fuzzy_matched, va_no_coords = auto_assign_by_location("VA", va_fuzzy_matched,
 md_fuzzy_matched, md_no_coords = auto_assign_by_location("MD", md_fuzzy_matched, eia_plants_loc, bus_coords)
 wv_fuzzy_matched, wv_no_coords = auto_assign_by_location("WV", wv_fuzzy_matched, eia_plants_loc, bus_coords)
 
+ar_fuzzy_matched, ar_no_coords = auto_assign_by_location("AR", ar_fuzzy_matched, eia_plants_loc, bus_coords)
+il_fuzzy_matched, il_no_coords = auto_assign_by_location("IL", il_fuzzy_matched, eia_plants_loc, bus_coords)
+
+
 # ── Run on fuzzy_unmatched and merge into fuzzy_matched ───────────────────────
 va_unmatched_located, va_unmatched_no_coords =
     auto_assign_by_location("VA unmatched", va_fuzzy_unmatched, eia_plants_loc, bus_coords, max_cap_mw=Inf)
@@ -1062,9 +1165,18 @@ md_unmatched_located, md_unmatched_no_coords =
 wv_unmatched_located, wv_unmatched_no_coords =
     auto_assign_by_location("WV unmatched", wv_fuzzy_unmatched, eia_plants_loc, bus_coords, max_cap_mw=Inf)
 
+ar_unmatched_located, ar_unmatched_no_coords =
+    auto_assign_by_location("AR unmatched", ar_fuzzy_unmatched, eia_plants_loc, bus_coords, max_cap_mw=Inf)
+il_unmatched_located, il_unmatched_no_coords =
+    auto_assign_by_location("IL unmatched", il_fuzzy_unmatched, eia_plants_loc, bus_coords, max_cap_mw=Inf)
+
+
 va_fuzzy_matched = vcat(va_fuzzy_matched, va_unmatched_located, cols=:union)
 md_fuzzy_matched = vcat(md_fuzzy_matched, md_unmatched_located, cols=:union)
-wv_fuzzy_matched = vcat(wv_fuzzy_matched, wv_unmatched_located, cols=:union)    
+wv_fuzzy_matched = vcat(wv_fuzzy_matched, wv_unmatched_located, cols=:union)  
+
+ar_fuzzy_matched = vcat(ar_fuzzy_matched, ar_unmatched_located, cols=:union)
+il_fuzzy_matched = vcat(il_fuzzy_matched, il_unmatched_located, cols=:union)
 
 # ── 17. Build final per-state solar DataFrames ────────────────────────────────
 function build_state_solar_df(label::String,
@@ -1138,10 +1250,15 @@ va_solar = build_state_solar_df("VA", va_solar_matched, va_mmwg_matched);
 md_solar = build_state_solar_df("MD", md_solar_matched, md_mmwg_matched);
 wv_solar = build_state_solar_df("WV", wv_solar_matched, wv_mmwg_matched);
 
+ar_solar = build_state_solar_df("AR", ar_solar_matched, ar_mmwg_matched)
+il_solar = build_state_solar_df("IL", il_solar_matched, il_mmwg_matched)
 
 va_solar[!, "bus_voltage_kv"] = [clean_bus_voltage(x) for x in va_solar[!, "bus_voltage_kv"]];
 md_solar[!, "bus_voltage_kv"] = [clean_bus_voltage(x) for x in md_solar[!, "bus_voltage_kv"]];
 wv_solar[!, "bus_voltage_kv"] = [clean_bus_voltage(x) for x in wv_solar[!, "bus_voltage_kv"]];
+
+ar_solar[!, "bus_voltage_kv"] = [clean_bus_voltage(x) for x in ar_solar[!, "bus_voltage_kv"]]
+il_solar[!, "bus_voltage_kv"] = [clean_bus_voltage(x) for x in il_solar[!, "bus_voltage_kv"]]
 
 # ── Reproducible generator name suffixes ──────────────────────────────────────
 Random.seed!(1234)
@@ -1165,9 +1282,9 @@ end
 
 
 function build_eia_only_solar_df(label::String,
-                                  eia_has_both::DataFrame,
-                                  neither_mmwg_matched::DataFrame,
-                                  fuzzy_matched::DataFrame)
+    eia_has_both::DataFrame,
+    neither_mmwg_matched::DataFrame,
+    fuzzy_matched::DataFrame)
 
     # ── Source 3: EIA has BusID+BusName, not in EI ───────────────────────────
     s3 = DataFrame(
@@ -1184,44 +1301,51 @@ function build_eia_only_solar_df(label::String,
         eia_capacity_mw = eia_has_both[!, "eia_capacity_mw"],
         eia860_status   = eia_has_both[!, "eia860_status"],
         bus_voltage_kv  = [clean_bus_voltage(x) for x in eia_has_both[!, "kV"]],
-
     )
 
     # ── Source 4: EIA neither → MMWG exact name match ────────────────────────
-    s4 = DataFrame(
+    if nrow(neither_mmwg_matched) > 0
+        s4 = DataFrame(
         source          = fill("EIA_MMWG_EXACT", nrow(neither_mmwg_matched)),
         gen_name        = [make_gen_name(neither_mmwg_matched[i, "Bus Number"], i)
-                           for i in 1:nrow(neither_mmwg_matched)],
-        ts_column_name  = fill(missing, nrow(neither_mmwg_matched)),
-        ei_lat          = fill(missing, nrow(neither_mmwg_matched)),
-        ei_lon          = fill(missing, nrow(neither_mmwg_matched)),
-        eia_lat         = neither_mmwg_matched[!, "eia_lat"],
-        eia_lon         = neither_mmwg_matched[!, "eia_lon"],
-        bus_id          = neither_mmwg_matched[!, "Bus Number"],
-        bus_name        = neither_mmwg_matched[!, "Load Flow  Bus Name"],
-        ei_capacity_mw  = fill(missing, nrow(neither_mmwg_matched)),
-        eia_capacity_mw = neither_mmwg_matched[!, "eia_capacity_mw"],
-        eia860_status   = neither_mmwg_matched[!, "eia860_status"],
-        bus_voltage_kv  = neither_mmwg_matched[!, "Bus kV"],
-    )
+        for i in 1:nrow(neither_mmwg_matched)],
+            ts_column_name  = fill(missing, nrow(neither_mmwg_matched)),
+            ei_lat          = fill(missing, nrow(neither_mmwg_matched)),
+            ei_lon          = fill(missing, nrow(neither_mmwg_matched)),
+            eia_lat         = neither_mmwg_matched[!, "eia_lat"],
+            eia_lon         = neither_mmwg_matched[!, "eia_lon"],
+            bus_id          = neither_mmwg_matched[!, "Bus Number"],
+            bus_name        = neither_mmwg_matched[!, "Load Flow  Bus Name"],
+            ei_capacity_mw  = fill(missing, nrow(neither_mmwg_matched)),
+            eia_capacity_mw = neither_mmwg_matched[!, "eia_capacity_mw"],
+            eia860_status   = neither_mmwg_matched[!, "eia860_status"],
+            bus_voltage_kv  = neither_mmwg_matched[!, "Bus kV"],
+        )
+    else
+        s4 = DataFrame()
+    end
 
     # ── Source 5: EIA neither → MMWG fuzzy match ─────────────────────────────
-    s5 = DataFrame(
+    if nrow(fuzzy_matched) > 0
+        s5 = DataFrame(
         source          = fill("EIA_MMWG_FUZZY", nrow(fuzzy_matched)),
         gen_name        = [make_gen_name(fuzzy_matched[i, "Bus Number"], i)
-                           for i in 1:nrow(fuzzy_matched)],
-        ts_column_name  = fill(missing, nrow(fuzzy_matched)),
-        ei_lat          = fill(missing, nrow(fuzzy_matched)),
-        ei_lon          = fill(missing, nrow(fuzzy_matched)),
-        eia_lat         = fuzzy_matched[!, "eia_lat"],
-        eia_lon         = fuzzy_matched[!, "eia_lon"],
-        bus_id          = fuzzy_matched[!, "Bus Number"],
-        bus_name        = fuzzy_matched[!, "Load Flow  Bus Name"],
-        ei_capacity_mw  = fill(missing, nrow(fuzzy_matched)),
-        eia_capacity_mw = fuzzy_matched[!, "eia_capacity_mw"],
-        eia860_status   = fuzzy_matched[!, "eia860_status"],
-        bus_voltage_kv  = fuzzy_matched[!, "Bus kV"],
-    )
+        for i in 1:nrow(fuzzy_matched)],
+            ts_column_name  = fill(missing, nrow(fuzzy_matched)),
+            ei_lat          = fill(missing, nrow(fuzzy_matched)),
+            ei_lon          = fill(missing, nrow(fuzzy_matched)),
+            eia_lat         = fuzzy_matched[!, "eia_lat"],
+            eia_lon         = fuzzy_matched[!, "eia_lon"],
+            bus_id          = fuzzy_matched[!, "Bus Number"],
+            bus_name        = fuzzy_matched[!, "Load Flow  Bus Name"],
+            ei_capacity_mw  = fill(missing, nrow(fuzzy_matched)),
+            eia_capacity_mw = fuzzy_matched[!, "eia_capacity_mw"],
+            eia860_status   = fuzzy_matched[!, "eia860_status"],
+            bus_voltage_kv  = fuzzy_matched[!, "Bus kV"],
+        )
+    else
+        s5 = DataFrame()
+    end
 
     final_df = vcat(s3, s4, s5, cols=:union)
     final_df[!, "state"] .= label
@@ -1249,6 +1373,9 @@ end
 va_solar_eia_only = build_eia_only_solar_df("VA", va_eia_has_both, va_neither_mmwg_matched, va_fuzzy_matched);
 md_solar_eia_only = build_eia_only_solar_df("MD", md_eia_has_both, md_neither_mmwg_matched, md_fuzzy_matched);
 wv_solar_eia_only = build_eia_only_solar_df("WV", wv_eia_has_both, wv_neither_mmwg_matched, wv_fuzzy_matched);
+
+ar_solar_eia_only = build_eia_only_solar_df("AR", ar_eia_has_both, ar_neither_mmwg_matched, ar_fuzzy_matched)
+il_solar_eia_only = build_eia_only_solar_df("IL", il_eia_has_both, il_neither_mmwg_matched, il_fuzzy_matched)
 
 function build_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::String)
 
@@ -1329,6 +1456,9 @@ va_export = build_export_df(va_solar, va_solar_eia_only, "VA")
 md_export = build_export_df(md_solar, md_solar_eia_only, "MD")
 wv_export = build_export_df(wv_solar, wv_solar_eia_only, "WV")
 
+ar_export = build_export_df(ar_solar, ar_solar_eia_only, "AR")
+il_export = build_export_df(il_solar, il_solar_eia_only, "IL")
+
 skip_generators_va = [
     # ("generator-316283-6731062071", "AC2-100 C_316283"),    # Row 2:  Hybrid plant + CC + 30km gap
     ("generator-316237-3396887655", "AB2-079_GEN_316237"),  # Row 13: CC + large cap mismatch (21 vs 60 MW)
@@ -1386,6 +1516,30 @@ n_removed = nrow(md_export) - nrow(md_export_filtered)
 @assert n_removed == length(unique(first.(skip_generators_md))) "Row count mismatch after filtering: removed $n_removed but expected $(length(unique(first.(skip_generators_md))))"
 @info "Removed $n_removed generators from md_export"
 md_export = md_export_filtered
+
+skip_generators_ar = [
+    ("generator-630715-7143542063", "BIGCREKR"),  # Retired, too large and bus outside of AR
+]
+
+skip_names_ar = Set(name for (name, _) in skip_generators_ar)
+
+# Verify both gen_name and bus_name match before filtering
+for (gen_name, bus_name) in skip_generators_ar
+    match = filter(row -> row.gen_name == gen_name, ar_export)
+    if nrow(match) == 0
+        @warn "Generator not found: $gen_name"
+    elseif match[1, :bus_name] != bus_name
+        @warn "Bus mismatch for $gen_name: expected $bus_name, got $(match[1, :bus_name])"
+    end
+end
+
+ar_export_filtered = filter(row -> !(row.gen_name in skip_names_ar), ar_export)
+
+
+n_removed = nrow(ar_export) - nrow(ar_export_filtered)
+@assert n_removed == length(unique(first.(skip_generators_ar))) "Row count mismatch after filtering: removed $n_removed but expected $(length(unique(first.(skip_generators_ar))))"
+@info "Removed $n_removed generators from ar_export"
+ar_export = ar_export_filtered
 # ── Write CSVs ────────────────────────────────────────────────────────────────
 const OUTPUT_DIR = "/Users/sabrilg/Documents/GitHub/va_updates/VREdata"
 
@@ -1393,10 +1547,16 @@ CSV.write(joinpath(OUTPUT_DIR, "solar_RE_VA_EI_buses.csv"), va_export)
 CSV.write(joinpath(OUTPUT_DIR, "solar_RE_MD_EI_buses.csv"), md_export)
 CSV.write(joinpath(OUTPUT_DIR, "solar_RE_WV_EI_buses.csv"), wv_export)
 
+CSV.write(joinpath(OUTPUT_DIR, "solar_RE_AR_EI_buses.csv"), ar_export)
+CSV.write(joinpath(OUTPUT_DIR, "solar_RE_IL_EI_buses.csv"), il_export)
+
 println("\n✅ CSVs written:")
 println("  → solar_RE_VA_EI_buses.csv (", nrow(va_export), " rows)")
 println("  → solar_RE_MD_EI_buses.csv (", nrow(md_export), " rows)")
 println("  → solar_RE_WV_EI_buses.csv (", nrow(wv_export), " rows)")
+
+println("  → solar_RE_AR_EI_buses.csv (", nrow(ar_export), " rows)")
+println("  → solar_RE_IL_EI_buses.csv (", nrow(il_export), " rows)")
 
 
 skipped_gen_names_va = Set(name for (name, _) in skip_generators_va)
@@ -1427,6 +1587,8 @@ for (state_label, df, state_buses) in [
     ("VA", va_export, va_buses),
     ("MD", md_export, md_buses),
     ("WV", wv_export, wv_buses),
+    ("AR", ar_export, ar_buses),
+    ("IL", il_export, il_buses),
 ]
     bus_col = "bus_id" in names(df) ? "bus_id" : "bus_number"
 
@@ -1474,7 +1636,7 @@ for (state_label, df, state_buses) in [
                       names(missing_bus))), allrows=true)
     end
 end
-println("█"^70)
+println("█"^70) 
 
 # ── Solar EI Update Report & Diagnosis ───────────────────────────────────────
 
@@ -2245,17 +2407,33 @@ va_ei_wind_result = match_ei_to_eia_wind(VA_ei_gens, eia_expanded, "VA")
 md_ei_wind_result = match_ei_to_eia_wind(MD_ei_gens, eia_expanded, "MD")
 wv_ei_wind_result = match_ei_to_eia_wind(WV_ei_gens, eia_expanded, "WV")
 
+ar_ei_wind_result = match_ei_to_eia_wind(AR_ei_gens, eia_expanded, "AR")
+il_ei_wind_result = match_ei_to_eia_wind(IL_ei_gens, eia_expanded, "IL")
+
 va_wind_matched, va_wind_unmatched = summarize_wind("VA", va_ei_wind_result)
 md_wind_matched, md_wind_unmatched = summarize_wind("MD", md_ei_wind_result)
 wv_wind_matched, wv_wind_unmatched = summarize_wind("WV", wv_ei_wind_result)
+
+ar_wind_matched, ar_wind_unmatched = summarize_wind("AR", ar_ei_wind_result)
+il_wind_matched, il_wind_unmatched = summarize_wind("IL", il_ei_wind_result)
+#TODO make the generator-347856-8481333983 unvailable. That corresponds to the other bus of the project Prairie Oak Solar
+#which is a solar plant already described and added in the solar fleet as generator-347853-1295279357
 
 va_wind_matched = dedup_wind_matched("VA", va_wind_matched)
 md_wind_matched = dedup_wind_matched("MD", md_wind_matched)
 wv_wind_matched = dedup_wind_matched("WV", wv_wind_matched)
 
+ar_wind_matched = dedup_wind_matched("AR", ar_wind_matched)
+il_wind_matched = dedup_wind_matched("IL", il_wind_matched)
+
+
 va_wind_mmwg_matched, va_wind_still_unmatched = mmwg_lookup_wind("VA", va_wind_unmatched, mmwg_slim)
 md_wind_mmwg_matched, md_wind_still_unmatched = mmwg_lookup_wind("MD", md_wind_unmatched, mmwg_slim)
 wv_wind_mmwg_matched, wv_wind_still_unmatched = mmwg_lookup_wind("WV", wv_wind_unmatched, mmwg_slim)
+
+ar_wind_mmwg_matched, ar_wind_still_unmatched = mmwg_lookup_wind("AR", ar_wind_unmatched, mmwg_slim)
+il_wind_mmwg_matched, il_wind_still_unmatched = mmwg_lookup_wind("IL", il_wind_unmatched, mmwg_slim)
+
 
 skip_generators_md_wind = [
     ("generator-235530-8580535381", "01BS_U2-073A_235530"),  # Twin Ridges Wind Farm — PA plant on MD border, wrong state
@@ -2284,6 +2462,8 @@ for (label, matched, mmwg, unmatched) in [
     ("VA", va_wind_matched, va_wind_mmwg_matched, va_wind_still_unmatched),
     ("MD", md_wind_matched, md_wind_mmwg_matched, md_wind_still_unmatched),
     ("WV", wv_wind_matched, wv_wind_mmwg_matched, wv_wind_still_unmatched),
+    ("AR", ar_wind_matched, ar_wind_mmwg_matched, ar_wind_still_unmatched),
+    ("IL", il_wind_matched, il_wind_mmwg_matched, il_wind_still_unmatched),
 ]
     println("\n  $label:")
     println("    ✅ EIA2PF matched:   ", nrow(matched))
@@ -2422,11 +2602,21 @@ md_wind_eia_unmatched, md_wind_eia_has_both, md_wind_eia_neither =
 wv_wind_eia_unmatched, wv_wind_eia_has_both, wv_wind_eia_neither =
     find_eia_wind_not_in_ei("WV", wv_ei_wind_result, eia_expanded, "WV")
 
+ar_wind_eia_unmatched, ar_wind_eia_has_both, ar_wind_eia_neither =
+    find_eia_wind_not_in_ei("AR", ar_ei_wind_result, eia_expanded, "AR")
+il_wind_eia_unmatched, il_wind_eia_has_both, il_wind_eia_neither =
+    find_eia_wind_not_in_ei("IL", il_ei_wind_result, eia_expanded, "IL")
+
+
 
     # ── Strip cancelled plants BEFORE EIA-not-in-EI search ───────────────────────
 va_wind_eia_unmatched = remove_cancelled_wind("VA eia_unmatched", va_wind_eia_unmatched)
 md_wind_eia_unmatched = remove_cancelled_wind("MD eia_unmatched", md_wind_eia_unmatched)
 wv_wind_eia_unmatched = remove_cancelled_wind("WV eia_unmatched", wv_wind_eia_unmatched)
+
+ar_wind_eia_unmatched = remove_cancelled_wind("AR eia_unmatched", ar_wind_eia_unmatched)
+il_wind_eia_unmatched = remove_cancelled_wind("IL eia_unmatched", il_wind_eia_unmatched)
+
 
 va_wind_eia_has_both, va_wind_eia_neither =
     begin
@@ -2447,11 +2637,29 @@ wv_wind_eia_has_both, wv_wind_eia_neither =
         has, neit
     end
 
+ar_wind_eia_has_both, ar_wind_eia_neither =
+    begin
+        has  = remove_cancelled_wind("AR has_both",  ar_wind_eia_has_both)
+        neit = remove_cancelled_wind("AR neither",   ar_wind_eia_neither)
+        has, neit
+    end
+
+il_wind_eia_has_both, il_wind_eia_neither =
+    begin
+        has  = remove_cancelled_wind("IL has_both",  il_wind_eia_has_both)
+        neit = remove_cancelled_wind("IL neither",   il_wind_eia_neither)
+        has, neit
+    end
+
 # ── W-12b. Patch has_both: override bad EIA buses BEFORE build_eia_only_wind_df
 println("\n── Applying WIND_MANUAL_OVERRIDES to wind_eia_has_both (EIA_ONLY source) ──")
 va_wind_eia_has_both, _, _ = apply_overrides_to_eia_df("VA", va_wind_eia_has_both, :eia_has_both, mmwg_slim, WIND_MANUAL_OVERRIDES)
 md_wind_eia_has_both, _, _ = apply_overrides_to_eia_df("MD", md_wind_eia_has_both, :eia_has_both, mmwg_slim, WIND_MANUAL_OVERRIDES)
 wv_wind_eia_has_both, _, _ = apply_overrides_to_eia_df("WV", wv_wind_eia_has_both, :eia_has_both, mmwg_slim, WIND_MANUAL_OVERRIDES)
+
+ar_wind_eia_has_both, _, _ = apply_overrides_to_eia_df("AR", ar_wind_eia_has_both, :eia_has_both, mmwg_slim, WIND_MANUAL_OVERRIDES)
+il_wind_eia_has_both, _, _ = apply_overrides_to_eia_df("IL", il_wind_eia_has_both, :eia_has_both, mmwg_slim, WIND_MANUAL_OVERRIDES)
+
 
 
 # ── W6. Exact name match → MMWG ──────────────────────────────────────────────
@@ -2504,11 +2712,20 @@ md_wind_neither_mmwg, md_wind_neither_unmatched =
 wv_wind_neither_mmwg, wv_wind_neither_unmatched =
     match_neither_to_mmwg_wind("WV", wv_wind_eia_neither, mmwg_slim)
 
+ar_wind_neither_mmwg, ar_wind_neither_unmatched = 
+    match_neither_to_mmwg_wind("AR", ar_wind_eia_neither, mmwg_slim)
+il_wind_neither_mmwg, il_wind_neither_unmatched = 
+    match_neither_to_mmwg_wind("IL", il_wind_eia_neither, mmwg_slim)
+    
+
 # ── W-13b. Patch neither_mmwg_matched: override bad MMWG buses BEFORE fuzzy ──
 println("\n── Applying WIND_MANUAL_OVERRIDES to wind_neither_mmwg_matched (EIA_MMWG_EXACT source) ──")
 va_wind_neither_mmwg, _, _ = apply_overrides_to_eia_df("VA", va_wind_neither_mmwg, :neither_mmwg, mmwg_slim, WIND_MANUAL_OVERRIDES)
 md_wind_neither_mmwg, _, _ = apply_overrides_to_eia_df("MD", md_wind_neither_mmwg, :neither_mmwg, mmwg_slim, WIND_MANUAL_OVERRIDES)
 wv_wind_neither_mmwg, _, _ = apply_overrides_to_eia_df("WV", wv_wind_neither_mmwg, :neither_mmwg, mmwg_slim, WIND_MANUAL_OVERRIDES)
+
+ar_wind_neither_mmwg, _, _ = apply_overrides_to_eia_df("AR", ar_wind_neither_mmwg, :neither_mmwg, mmwg_slim, WIND_MANUAL_OVERRIDES)
+il_wind_neither_mmwg, _, _ = apply_overrides_to_eia_df("IL", il_wind_neither_mmwg, :neither_mmwg, mmwg_slim, WIND_MANUAL_OVERRIDES)
 
 # ── W7. Fuzzy match → MMWG ───────────────────────────────────────────────────
 function fuzzy_match_to_mmwg_wind(label::String, still_unmatched::DataFrame,
@@ -2586,6 +2803,11 @@ md_wind_fuzzy_matched, md_wind_fuzzy_unmatched =
 wv_wind_fuzzy_matched, wv_wind_fuzzy_unmatched =
     fuzzy_match_to_mmwg_wind("WV", wv_wind_neither_unmatched, mmwg_slim)
 
+ar_wind_fuzzy_matched, ar_wind_fuzzy_unmatched =
+    fuzzy_match_to_mmwg_wind("AR", ar_wind_neither_unmatched, mmwg_slim)
+il_wind_fuzzy_matched, il_wind_fuzzy_unmatched =
+    fuzzy_match_to_mmwg_wind("IL", il_wind_neither_unmatched, mmwg_slim)
+
 # ── W8. Apply manual overrides to fuzzy matched ──────────────────────────────
 function apply_wind_manual_overrides!(label::String, fuzzy_matched::DataFrame,
                                       overrides::Dict)
@@ -2609,6 +2831,9 @@ va_wind_fuzzy_matched = apply_wind_manual_overrides!("VA", va_wind_fuzzy_matched
 md_wind_fuzzy_matched = apply_wind_manual_overrides!("MD", md_wind_fuzzy_matched, WIND_MANUAL_OVERRIDES)
 wv_wind_fuzzy_matched = apply_wind_manual_overrides!("WV", wv_wind_fuzzy_matched, WIND_MANUAL_OVERRIDES)
 
+ar_wind_fuzzy_matched = apply_wind_manual_overrides!("AR", ar_wind_fuzzy_matched, WIND_MANUAL_OVERRIDES)
+il_wind_fuzzy_matched = apply_wind_manual_overrides!("IL", il_wind_fuzzy_matched, WIND_MANUAL_OVERRIDES)
+
 # ── W9. Location-based fallback for fuzzy_unmatched ──────────────────────────
 # Reuses auto_assign_by_location() defined in the solar section
 va_wind_unmatched_located, va_wind_unmatched_no_coords =
@@ -2620,11 +2845,20 @@ md_wind_unmatched_located, md_wind_unmatched_no_coords =
 wv_wind_unmatched_located, wv_wind_unmatched_no_coords =
     auto_assign_by_location("WV wind unmatched", wv_wind_fuzzy_unmatched,
                             eia_plants_loc, bus_coords, max_cap_mw=Inf)
+ar_wind_unmatched_located, ar_wind_unmatched_no_coords =
+    auto_assign_by_location("AR wind unmatched", ar_wind_fuzzy_unmatched,
+                            eia_plants_loc, bus_coords, max_cap_mw=Inf)
+il_wind_unmatched_located, il_wind_unmatched_no_coords =
+    auto_assign_by_location("IL wind unmatched", il_wind_fuzzy_unmatched,
+                            eia_plants_loc, bus_coords, max_cap_mw=Inf)
 
 # Merge location-assigned back into fuzzy_matched
 va_wind_fuzzy_matched = vcat(va_wind_fuzzy_matched, va_wind_unmatched_located, cols=:union)
 md_wind_fuzzy_matched = vcat(md_wind_fuzzy_matched, md_wind_unmatched_located, cols=:union)
 wv_wind_fuzzy_matched = vcat(wv_wind_fuzzy_matched, wv_wind_unmatched_located, cols=:union)
+
+ar_wind_fuzzy_matched = vcat(ar_wind_fuzzy_matched, ar_wind_unmatched_located, cols=:union)
+il_wind_fuzzy_matched = vcat(il_wind_fuzzy_matched, il_wind_unmatched_located, cols=:union)
 
 println("\n", "="^60)
 println("📊 Final Wind EIA-not-in-EI Summary")
@@ -2639,6 +2873,12 @@ for (label, has_both, neither_mmwg, fuzzy, fuzzy_unc, loc, no_coords) in [
     ("WV", wv_wind_eia_has_both, wv_wind_neither_mmwg,
            wv_wind_fuzzy_matched, wv_wind_fuzzy_unmatched,
            wv_wind_unmatched_located, wv_wind_unmatched_no_coords),
+    ("AR", ar_wind_eia_has_both, ar_wind_neither_mmwg,
+           ar_wind_fuzzy_matched, ar_wind_fuzzy_unmatched,
+           ar_wind_unmatched_located, ar_wind_unmatched_no_coords),
+    ("IL", il_wind_eia_has_both, il_wind_neither_mmwg,
+           il_wind_fuzzy_matched, il_wind_fuzzy_unmatched,
+           il_wind_unmatched_located, il_wind_unmatched_no_coords),
 ]
     total_assigned = nrow(has_both) + nrow(neither_mmwg) + nrow(fuzzy)
     println("\n  $label:")
@@ -2729,6 +2969,9 @@ end
 va_wind = build_state_wind_df("VA", va_wind_matched, va_wind_mmwg_matched)
 md_wind = build_state_wind_df("MD", md_wind_matched, md_wind_mmwg_matched)
 wv_wind = build_state_wind_df("WV", wv_wind_matched, wv_wind_mmwg_matched)
+
+ar_wind = build_state_wind_df("AR", ar_wind_matched, ar_wind_mmwg_matched)
+il_wind = build_state_wind_df("IL", il_wind_matched, il_wind_mmwg_matched)
 
 # ── W12. Build EIA-only wind DataFrames ──────────────────────────────────────
 function build_eia_only_wind_df(label::String,
@@ -2863,6 +3106,11 @@ md_wind_eia_only = build_eia_only_wind_df("MD", md_wind_eia_has_both,
 wv_wind_eia_only = build_eia_only_wind_df("WV", wv_wind_eia_has_both,
     wv_wind_neither_mmwg, wv_wind_fuzzy_matched)
 
+ar_wind_eia_only = build_eia_only_wind_df("AR", ar_wind_eia_has_both,
+    ar_wind_neither_mmwg, ar_wind_fuzzy_matched)
+il_wind_eia_only = build_eia_only_wind_df("IL", il_wind_eia_has_both,
+    il_wind_neither_mmwg, il_wind_fuzzy_matched)
+
 # ── W13. Build export DataFrames ──────────────────────────────────────────────
 function build_wind_export_df(ei_df::DataFrame, eia_only_df::DataFrame, label::String)
 
@@ -2962,6 +3210,9 @@ va_wind_export = build_wind_export_df(va_wind, va_wind_eia_only, "VA")
 md_wind_export = build_wind_export_df(md_wind, md_wind_eia_only, "MD")
 wv_wind_export = build_wind_export_df(wv_wind, wv_wind_eia_only, "WV")
 
+ar_wind_export = build_wind_export_df(ar_wind, ar_wind_eia_only, "AR")
+il_wind_export = build_wind_export_df(il_wind, il_wind_eia_only, "IL")
+
 
 # ── Check which buses in solar exports don't exist in EI ──────────────────────
 ei_valid_buses = Set{Int}(bus_coords[!, :bus_number])
@@ -3033,10 +3284,16 @@ CSV.write(joinpath(OUTPUT_DIR, "wind_RE_VA_EI_buses.csv"), va_wind_export)
 CSV.write(joinpath(OUTPUT_DIR, "wind_RE_MD_EI_buses.csv"), md_wind_export)
 CSV.write(joinpath(OUTPUT_DIR, "wind_RE_WV_EI_buses.csv"), wv_wind_export)
 
+CSV.write(joinpath(OUTPUT_DIR, "wind_RE_AR_EI_buses.csv"), ar_wind_export)
+CSV.write(joinpath(OUTPUT_DIR, "wind_RE_IL_EI_buses.csv"), il_wind_export)
+
 println("\n✅ Wind CSVs written:")
 println("  → wind_RE_VA_EI_buses.csv (", nrow(va_wind_export), " rows)")
 println("  → wind_RE_MD_EI_buses.csv (", nrow(md_wind_export), " rows)")
 println("  → wind_RE_W_EI_busesV.csv (", nrow(wv_wind_export), " rows)")
+
+println("  → wind_RE_AR_EI_buses.csv (", nrow(ar_wind_export), " rows)")
+println("  → wind_RE_IL_EI_buses.csv (", nrow(il_wind_export), " rows)")
 
 # ── W16. Wind EI Update Report & Diagnosis ───────────────────────────────────
 

@@ -110,13 +110,21 @@ end
 
 
 # Find 5 closest buses to plant 68076 (any voltage)
-#find_buses_for_plant(65665)
+#find_buses_for_plant(63766)
 
 # Find 5 closest 230 kV buses only
 #find_buses_for_plant(68076, kv_filter=230.0)
 
 # Find top 10 closest buses
-#find_buses_for_plant(64848, top_n=50)
+# find_buses_for_plant(67642, top_n=50)
+
+bus = get_bus(sys, 335335)
+gens = filter(g -> get_bus(g) == bus, collect(get_components(Generator, sys)))
+
+# Get bus coordinates
+geo = get_supplemental_attributes(GeographicInfo, bus)
+coords = isempty(geo) ? (missing, missing) : (geo[1].geo_json["coordinates"][2], geo[1].geo_json["coordinates"][1])
+
 
 # ── 3. Load U.S. state boundaries (shapefile) ─────────────────────────────────
 # Source: U.S. Census Bureau TIGER/Line shapefiles
@@ -160,6 +168,11 @@ va_poly = get_state_polygon("Virginia")
 md_poly = get_state_polygon("Maryland")
 wv_poly = get_state_polygon("West Virginia")
 
+ar_poly = get_state_polygon("Arkansas")
+il_poly = get_state_polygon("Illinois")
+
+mn_poly = get_state_polygon("Minnesota")
+
 # ── Classify each bus by state ────────────────────────────────────────────────
 println("Classifying $(nrow(bus_coords)) buses by state (this may take a moment)...")
 
@@ -173,6 +186,12 @@ for (i, r) in enumerate(eachrow(bus_coords))
         bus_coords[i, :state] = "MD"
     elseif point_in_polygon(r.lat, r.lon, wv_poly)
         bus_coords[i, :state] = "WV"
+    elseif point_in_polygon(r.lat, r.lon, ar_poly)
+        bus_coords[i, :state] = "AR"
+    elseif point_in_polygon(r.lat, r.lon, il_poly)
+        bus_coords[i, :state] = "IL"
+    elseif point_in_polygon(r.lat, r.lon, mn_poly)
+        bus_coords[i, :state] = "MN"
     end
 end
 
@@ -180,6 +199,10 @@ end
 va_buses = filter(r -> coalesce(r.state, "") == "VA", bus_coords)
 md_buses = filter(r -> coalesce(r.state, "") == "MD", bus_coords)
 wv_buses = filter(r -> coalesce(r.state, "") == "WV", bus_coords)
+
+ar_buses = filter(r -> coalesce(r.state, "") == "AR", bus_coords)
+il_buses = filter(r -> coalesce(r.state, "") == "IL", bus_coords)
+mn_buses = filter(r -> coalesce(r.state, "") == "MN", bus_coords)
 
 # println("\n── Bus count by state ───────────────────────────────────────")
 # println("  VA: $(nrow(va_buses)) buses")
@@ -197,7 +220,7 @@ wv_buses = filter(r -> coalesce(r.state, "") == "WV", bus_coords)
 # println("\n── WV buses ─────────────────────────────────────────────────")
 # show(sort(wv_buses, :bus_number), allrows=true)
 
-bus = get_bus(sys, 316283)
+bus = get_bus(sys, 67991)
 gens = filter(g -> get_bus(g) == bus, collect(get_components(Generator, sys)))
 
 # Get bus coordinates
@@ -309,3 +332,51 @@ for bn in wv_non_wind_bus_numbers
     end
 end
 show(wv_wind_result, allrows=true)
+
+# ── Minnesota generators ───────────────────────────────────────────────────────
+# ── Build the dict lookup first ───────────────────────────────────────────────
+# bus_coords_dict = Dict{String, Tuple{Float64, Float64}}(
+#     row.bus_name => (row.lat, row.lon)
+#     for row in eachrow(bus_coords)
+#     if !ismissing(row.lat) && !ismissing(row.lon)
+# )
+# all_generators = collect(get_components(Generator, sys))
+# gen_data = DataFrame(
+#     name     = [get_name(g) for g in all_generators],
+#     bus_name = [get_name(g.bus) for g in all_generators],
+#     lat      = [get(bus_coords_dict, get_name(g.bus), (missing, missing))[1] for g in all_generators],
+#     lon      = [get(bus_coords_dict, get_name(g.bus), (missing, missing))[2] for g in all_generators],
+# )
+
+
+# mn_gen_data = filter(row ->
+#     !ismissing(row.lat) && !ismissing(row.lon) &&
+#     point_in_polygon(row.lat, row.lon, mn_poly),
+#     gen_data
+# )
+
+# mn_generators = [get_component(Generator, sys, name) for name in mn_gen_data.name]
+# filter!(!isnothing, mn_generators)
+# println("MN generators: $(length(mn_generators))")
+
+# # ── Build output DataFrame (same schema as your WECC export) ──────────────────
+# mn_resources = DataFrame(
+#     "generator_type"          => [get_gen_type(g)              for g in mn_generators],
+#     "name"                    => [get_name(g)                   for g in mn_generators],
+#     "available"               => [get_available(g)              for g in mn_generators],
+#     "bus"                     => [get_name(g.bus)               for g in mn_generators],
+#     "bus_number"              => [get_number(g.bus)             for g in mn_generators],
+#     "rating"                  => [get_rating(g)                 for g in mn_generators],
+#     "active_power_limits_min" => [get_min_power(g)              for g in mn_generators],
+#     "active_power_limits_max" => [get_max_active_power(g)       for g in mn_generators],
+#     "prime_mover_type"        => [get_prime_mover_str(g)        for g in mn_generators],
+#     "fuel"                    => [get_fuel(g)                   for g in mn_generators],
+#     "ts_column_name"          => [get_ts_name(g)                for g in mn_generators],
+#     "lat"                     => [get(bus_coords_dict, get_name(g.bus), (missing, missing))[1] for g in mn_generators],
+#     "lon"                     => [get(bus_coords_dict, get_name(g.bus), (missing, missing))[2] for g in mn_generators],
+#     "plant_name"              => [get(g.ext, "plant_name", missing) for g in mn_generators],
+# )
+
+# # ── Write CSVs ────────────────────────────────────────────────────────────────
+# CSV.write("minnesota_resources.csv", mn_resources; transform=(col,val)->something(val,missing))
+# CSV.write("minnesota_buses.csv",     mn_buses)
